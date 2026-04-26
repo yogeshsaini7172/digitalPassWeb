@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yogeshsaini7172.github.io/digitalPassWeb/sitemap.xml
