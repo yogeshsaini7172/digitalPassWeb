@@ -28,8 +28,55 @@
 
     <!-- Theme color for mobile browsers -->
     <meta name="theme-color" content="#0a0a1a" />
+
+    <!-- Structured Data (JSON-LD) for Google -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "SISTEC Digital Pass",
+      "url": "https://yogeshsaini7172.github.io/digitalPassWeb/",
+      "description": "Official gate pass and visitor management system for SISTec-RB (Sagar Institute of Science & Technology, Ratibad, Bhopal). Manage gate passes, visitors, and campus security digitally.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Web",
+      "inLanguage": "en-IN",
+      "author": {
+        "@type": "Person",
+        "name": "Yogesh Saini"
+      },
+      "provider": {
+        "@type": "CollegeOrUniversity",
+        "name": "Sagar Institute of Science & Technology, Ratibad",
+        "alternateName": "SISTec-RB",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Bhopal",
+          "addressRegion": "Madhya Pradesh",
+          "addressCountry": "IN"
+        }
+      }
+    }
+    </script>
   </head>
   <body>
+    <!-- Static content for search engine crawlers (shown only when JS is disabled) -->
+    <noscript>
+      <h1>SISTEC Digital Pass — Gate Pass &amp; Visitor Management System</h1>
+      <p>
+        SISTEC Digital Pass is the official digital gate pass and visitor management system
+        for SISTec-RB (Sagar Institute of Science &amp; Technology, Ratibad), Bhopal, Madhya Pradesh.
+        It enables students, faculty, and staff to apply for gate passes and manage campus entry
+        and exit records securely and digitally.
+      </p>
+      <p>
+        Features include: digital gate pass applications, real-time visitor tracking, security
+        guard management, admin dashboard, and campus security reporting.
+      </p>
+      <p>
+        Developed by Yogesh Saini under the guidance of Prof. Himanshu Yadav, SISTec-RB, Bhopal.
+      </p>
+      <p>Keywords: SISTEC Digital Pass, sistec gate pass, SISTec visitor management, sagar institute digital pass, sistec campus pass, SISTEC Bhopal, digital gate pass system, SISTec-RB.</p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
