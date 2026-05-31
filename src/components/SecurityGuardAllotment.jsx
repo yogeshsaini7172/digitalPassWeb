@@ -134,10 +134,10 @@ const SecurityGuardAllotment = () => {
         alignItems: 'center',
         gap: '0.75rem',
         transition: 'background 0.2s',
-        background: 'rgba(255,255,255,0.02)',
+        background: 'var(--surface-card)',
       }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = ''}
     >
       {/* Avatar */}
       <div style={{
@@ -172,12 +172,6 @@ const SecurityGuardAllotment = () => {
 
   return (
     <>
-      {/* ── Top bar ── */}
-      <div className="topbar">
-        <h3 style={{ margin: 0 }}>Security Guard Allotment</h3>
-        <span className="badge badge-success">Online</span>
-      </div>
-
       <div className="page-content animate-fade-in">
 
         {/* ── Feedback banner ── */}
@@ -186,8 +180,8 @@ const SecurityGuardAllotment = () => {
             padding: '0.85rem 1.25rem',
             borderRadius: '10px',
             marginBottom: '1.5rem',
-            background: feedback.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-            border: `1px solid ${feedback.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            background: feedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+            border: `1px solid ${feedback.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
             color: feedback.type === 'success' ? 'var(--success)' : 'var(--danger)',
             fontSize: '0.9rem',
           }}>
@@ -204,7 +198,7 @@ const SecurityGuardAllotment = () => {
           {loadingCampuses ? (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               {[1, 2, 3].map(i => (
-                <div key={i} style={{ height: '38px', width: '120px', borderRadius: '8px', background: 'rgba(255,255,255,0.06)', animation: 'pulse 1.5s infinite' }} />
+                <div key={i} style={{ height: '38px', width: '120px', borderRadius: '8px', background: 'var(--surface-hover)', animation: 'pulse 1.5s infinite' }} />
               ))}
             </div>
           ) : campuses.length === 0 ? (
@@ -241,7 +235,7 @@ const SecurityGuardAllotment = () => {
                       Campus: <strong style={{ color: 'var(--text-primary)' }}>{selectedCampus}</strong>
                     </span>
                     <span className="badge badge-success">{allottedGuards.length} Allotted</span>
-                    <span className="badge" style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--text-secondary)' }}>{availableGuards.length} Available</span>
+                    <span className="badge" style={{ background: 'var(--surface-hover)', color: 'var(--text-secondary)' }}>{availableGuards.length} Available</span>
                   </div>
                   <button
                     onClick={handleSave}
@@ -254,7 +248,7 @@ const SecurityGuardAllotment = () => {
                 </div>
 
                 {/* ── Two-column layout ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <div className="responsive-grid-2">
 
                   {/* Left: Allotted Guards */}
                   <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

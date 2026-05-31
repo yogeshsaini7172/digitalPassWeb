@@ -27,6 +27,64 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
   
   const fileInputRef = useRef(null);
 
+  // Webcam integration
+  const [webcamActive, setWebcamActive] = useState(false);
+  const [webcamStream, setWebcamStream] = useState(null);
+  const videoRef = useRef(null);
+
+  const startWebcam = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 400, height: 500, facingMode: 'environment' }
+      });
+      setWebcamStream(mediaStream);
+      setWebcamActive(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Failed to access camera:", err);
+      showMsg('error', 'Could not access camera. Please select file upload instead.');
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      setWebcamStream(null);
+    }
+    setWebcamActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 400;
+    canvas.height = video.videoHeight || 500;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], 'visitor_photo.jpg', { type: 'image/jpeg' });
+        setImageFile(file);
+        
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    }, 'image/jpeg', 0.9);
+    
+    stopWebcam();
+  };
+
   const showMsg = (type, msg) => {
     setFeedback({ type, msg });
     setTimeout(() => setFeedback(null), 3000);
@@ -34,7 +92,12 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
 
   useEffect(() => {
     fetchMembers();
-  }, []);
+    return () => {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [webcamStream]);
 
   const fetchMembers = async () => {
     try {
@@ -170,20 +233,41 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Photo Capture */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
               <div 
-                style={{ width: '160px', height: '200px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '2px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}
-                onClick={() => fileInputRef.current?.click()}
+                style={{ width: '160px', height: '200px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '2px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}
               >
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {webcamActive ? (
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : imagePreview ? (
+                  <img src={imagePreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()} />
                 ) : (
-                  <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <div style={{ textAlign: 'center', color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
                     <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
-                    <div style={{ fontSize: '0.8rem' }}>Tap to capture</div>
+                    <div style={{ fontSize: '0.8rem' }}>Tap to upload</div>
                   </div>
                 )}
               </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {webcamActive ? (
+                  <>
+                    <button type="button" onClick={capturePhoto} className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}>📸 Snap</button>
+                    <button type="button" onClick={stopWebcam} className="btn btn-outline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={startWebcam} className="btn btn-outline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}>📹 Use Webcam</button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="btn btn-outline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}>📁 Choose File</button>
+                  </>
+                )}
+              </div>
+
               <input 
                 type="file" 
                 accept="image/*" 

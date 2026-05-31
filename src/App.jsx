@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ThemeProvider } from './ThemeContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import './App.css';
@@ -24,13 +25,13 @@ function App() {
   };
 
   return (
-    <>
+    <ThemeProvider>
       {!isAuthenticated ? (
         <Login onLoginSuccess={handleLoginSuccess} />
       ) : (
         <Dashboard onLogout={handleLogout} />
       )}
-    </>
+    </ThemeProvider>
   );
 }
 

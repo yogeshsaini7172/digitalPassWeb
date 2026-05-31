@@ -276,9 +276,9 @@ const Batches = () => {
   };
 
   return (
-    <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h3>Batches</h3>
+    <>
+      <div className="page-content animate-fade-in">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1.5rem' }}>
         <button className="btn btn-primary" onClick={handleOpenAddModal}>+ Add New Batch</button>
       </div>
 
@@ -329,9 +329,9 @@ const Batches = () => {
       ) : (
         <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
           {batches.map((batch, index) => (
-            <div key={index} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={index} className="glass-panel responsive-card" style={{ padding: '1.5rem' }}>
               <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>{batch}</h4>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div className="responsive-card-actions">
                 <button 
                   className="btn btn-outline" 
                   style={{ padding: '0.5rem 1rem' }}
@@ -351,10 +351,11 @@ const Batches = () => {
           ))}
         </div>
       )}
+      </div>
 
       {isEditModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem' }}>
-          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: '#121212' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: 'var(--surface-modal)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: 0 }}>Edit Batch: <span style={{ color: 'var(--accent-primary)' }}>{editingBatchName}</span></h3>
               <button onClick={() => setIsEditModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
@@ -365,7 +366,7 @@ const Batches = () => {
                 <div className="spinner" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }}></div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+              <div className="responsive-grid-2">
                 
                 {/* Level 1 Section */}
                 <div className="glass-panel" style={{ padding: '1rem' }}>
@@ -373,7 +374,7 @@ const Batches = () => {
                   {allAvailableMembers.length === 0 ? <p style={{ color: 'var(--text-secondary)' }}>No members available</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
                       {allAvailableMembers.map((member, idx) => (
-                        <label key={`l1-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
+                        <label key={`l1-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'var(--surface-hover)', borderRadius: '4px' }}>
                           <input 
                             type="checkbox" 
                             checked={level1Selected.includes(member.email)}
@@ -396,7 +397,7 @@ const Batches = () => {
                   {allAvailableMembers.length === 0 ? <p style={{ color: 'var(--text-secondary)' }}>No members available</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
                       {allAvailableMembers.map((member, idx) => (
-                        <label key={`l2-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
+                        <label key={`l2-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'var(--surface-hover)', borderRadius: '4px' }}>
                           <input 
                             type="checkbox" 
                             checked={level2Selected.includes(member.email)}
@@ -423,8 +424,8 @@ const Batches = () => {
         </div>
       )}
       {isAddModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem' }}>
-          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: '#121212' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: 'var(--surface-modal)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: 0 }}>Add New Batch</h3>
               <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
@@ -435,7 +436,7 @@ const Batches = () => {
                 <div className="spinner" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }}></div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+              <div className="responsive-grid-2">
                 
                 <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   {userRole === 'admin' && (
@@ -464,7 +465,7 @@ const Batches = () => {
                   {addAvailableMembers.length === 0 ? <p style={{ color: 'var(--text-secondary)' }}>No members available</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
                       {addAvailableMembers.map((member, idx) => (
-                        <label key={`add-l1-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
+                        <label key={`add-l1-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'var(--surface-hover)', borderRadius: '4px' }}>
                           <input 
                             type="checkbox" 
                             checked={addLevel1Selected.includes(member.email)}
@@ -487,7 +488,7 @@ const Batches = () => {
                   {addAvailableMembers.length === 0 ? <p style={{ color: 'var(--text-secondary)' }}>No members available</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
                       {addAvailableMembers.map((member, idx) => (
-                        <label key={`add-l2-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
+                        <label key={`add-l2-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.5rem', background: 'var(--surface-hover)', borderRadius: '4px' }}>
                           <input 
                             type="checkbox" 
                             checked={addLevel2Selected.includes(member.email)}
@@ -513,7 +514,7 @@ const Batches = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

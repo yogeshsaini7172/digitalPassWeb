@@ -5,7 +5,13 @@ import {
   addNewUser, editUser, uploadExcelUsers
 } from '../services/api';
 
-const UserManagement = () => {
+const UserManagement = ({ getImageUrl }) => {
+  const defaultGetImageUrl = (img) => {
+    if (!img) return null;
+    return `https://res.cloudinary.com/dtdo4gzfh/image/upload/${img}.jpg`;
+  };
+  const getUrl = getImageUrl || defaultGetImageUrl;
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formMode, setFormMode] = useState(null); // null, 'ADD', 'EDIT'
@@ -29,7 +35,47 @@ const UserManagement = () => {
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('');
 
-  const userRole = localStorage.getItem('userRole');
+  const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+
+  // Helper function to return fallback roles based on department and requester role
+  const getFallbackRoles = (dept) => {
+    const isAdministration = (dept || '').toUpperCase() === 'ADMINISTRATION';
+    if (isAdministration) {
+      if (userRole === 'admin') {
+        return ["admin", "principal", "hod", "security guard", "reception"];
+      } else if (userRole === 'principal') {
+        return ["hod", "security guard", "reception"];
+      } else if (userRole === 'hod') {
+        return ["security guard", "reception"];
+      }
+      return [];
+    } else {
+      if (userRole === 'admin' || userRole === 'principal') {
+        return ["hod", "faculty", "student"];
+      } else if (userRole === 'hod') {
+        return ["faculty", "student"];
+      } else if (userRole === 'faculty') {
+        return ["student"];
+      }
+      return [];
+    }
+  };
+
+  // Helper function to return fallback batches
+  const getFallbackBatches = (campus, dept) => {
+    const activeCampus = campus || localStorage.getItem('userCampus') || 'SISTec-Gandhi Nagar';
+    const currentYear = new Date().getFullYear();
+    const years = [currentYear - 3, currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+    const sections = ["A", "B", "C", "D"];
+    const fallbackList = [];
+    
+    years.forEach(yr => {
+      sections.forEach(sec => {
+        fallbackList.push(`${activeCampus}-${yr}-${dept || 'COMPUTER SCIENCE'}-${sec}`);
+      });
+    });
+    return fallbackList;
+  };
 
   useEffect(() => {
     if (!formMode) fetchUsers();
@@ -37,12 +83,35 @@ const UserManagement = () => {
   }, [formMode]);
 
   useEffect(() => {
+    console.log('selectedDept changed to:', selectedDept);
+    setSelectedRole(''); // Reset selectedRole when department changes
     if (selectedDept) fetchRoles();
+    else setRoles([]);
   }, [selectedDept]);
 
   useEffect(() => {
+    console.log('selectedRole changed to:', selectedRole);
     if (selectedDept && selectedRole) fetchBatches();
+    else setBatches([]);
   }, [selectedDept, selectedRole, selectedCampus]);
+
+  // Auto-select department if there is only one option
+  useEffect(() => {
+    console.log('departments list updated:', departments);
+    if (departments.length === 1 && selectedDept !== departments[0]) {
+      console.log('Auto-selecting department:', departments[0]);
+      setSelectedDept(departments[0]);
+    }
+  }, [departments]);
+
+  // Auto-select role if there is only one option
+  useEffect(() => {
+    console.log('roles list updated:', roles);
+    if (roles.length === 1 && selectedRole !== roles[0]) {
+      console.log('Auto-selecting role:', roles[0]);
+      setSelectedRole(roles[0]);
+    }
+  }, [roles]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -58,36 +127,126 @@ const UserManagement = () => {
   };
 
   const fetchCampusAndDept = async () => {
+    console.log('fetchCampusAndDept called. userRole:', userRole);
     try {
       const token = localStorage.getItem('token');
       const data = await getCampusAndDepartment(token);
-      setCampuses(data.campus || []);
-      setDepartments(data.department || []);
+      console.log('getCampusAndDepartment API response:', data);
+      
+      const campusList = data.campus || [];
+      const deptList = data.department || [];
+      const userDept = localStorage.getItem('userDepartment') || '';
+
+      if (userRole === 'admin') {
+        setCampuses(campusList.length > 0 ? campusList : ["SISTec-Gandhi Nagar", "SISTec-Ratibad"]);
+        setDepartments(deptList.length > 0 ? deptList : [
+          "COMPUTER SCIENCE",
+          "INFORMATION TECHNOLOGY",
+          "MECHANICAL ENGINEERING",
+          "CIVIL ENGINEERING",
+          "ELECTRICAL ENGINEERING",
+          "ELECTRONICS & COMMUNICATION",
+          "MBA",
+          "ADMINISTRATION"
+        ]);
+      } else if (userRole === 'principal') {
+        setCampuses([]);
+        setDepartments(deptList.length > 0 ? deptList : [
+          "COMPUTER SCIENCE",
+          "INFORMATION TECHNOLOGY",
+          "MECHANICAL ENGINEERING",
+          "CIVIL ENGINEERING",
+          "ELECTRICAL ENGINEERING",
+          "ELECTRONICS & COMMUNICATION",
+          "MBA",
+          "ADMINISTRATION"
+        ]);
+      } else {
+        // HOD or Faculty
+        setCampuses([]);
+        if (deptList.length > 0) {
+          setDepartments(deptList);
+        } else if (userDept) {
+          setDepartments([userDept]);
+        } else {
+          setDepartments(["COMPUTER SCIENCE"]);
+        }
+      }
     } catch (error) {
       console.error('Error fetching campus/dept:', error);
+      const userDept = localStorage.getItem('userDepartment') || '';
+      if (userRole === 'admin') {
+        setCampuses(["SISTec-Gandhi Nagar", "SISTec-Ratibad"]);
+        setDepartments([
+          "COMPUTER SCIENCE",
+          "INFORMATION TECHNOLOGY",
+          "MECHANICAL ENGINEERING",
+          "CIVIL ENGINEERING",
+          "ELECTRICAL ENGINEERING",
+          "ELECTRONICS & COMMUNICATION",
+          "MBA",
+          "ADMINISTRATION"
+        ]);
+      } else if (userRole === 'principal') {
+        setCampuses([]);
+        setDepartments([
+          "COMPUTER SCIENCE",
+          "INFORMATION TECHNOLOGY",
+          "MECHANICAL ENGINEERING",
+          "CIVIL ENGINEERING",
+          "ELECTRICAL ENGINEERING",
+          "ELECTRONICS & COMMUNICATION",
+          "MBA",
+          "ADMINISTRATION"
+        ]);
+      } else {
+        setCampuses([]);
+        setDepartments(userDept ? [userDept] : ["COMPUTER SCIENCE"]);
+      }
     }
   };
 
   const fetchRoles = async () => {
+    console.log('fetchRoles called for dept:', selectedDept);
     try {
       const token = localStorage.getItem('token');
       const data = await getRoleBasedOnDepartment({ department: selectedDept, token });
-      setRoles(data || []);
+      console.log('getRoleBasedOnDepartment API response:', data);
+      if (data && data.length > 0) {
+        setRoles(data);
+      } else {
+        const fallbacks = getFallbackRoles(selectedDept);
+        console.log('getRoleBasedOnDepartment empty list, using fallbacks:', fallbacks);
+        setRoles(fallbacks);
+      }
     } catch (error) {
       console.error('Error fetching roles:', error);
+      const fallbacks = getFallbackRoles(selectedDept);
+      console.log('Error fetching roles, using fallbacks:', fallbacks);
+      setRoles(fallbacks);
     }
   };
 
   const fetchBatches = async () => {
+    console.log('fetchBatches called for dept:', selectedDept, 'role:', selectedRole);
     try {
       const token = localStorage.getItem('token');
       const payload = { department: selectedDept, role: selectedRole, token };
       if (userRole === 'admin') payload.campus = selectedCampus;
       const data = await getBatchesBasedOnDepartment(payload);
-      setBatches(data || []);
+      console.log('getBatchesBasedOnDepartment API response:', data);
+      if (data && data.length > 0) {
+        setBatches(data);
+      } else {
+        const fallbacks = getFallbackBatches(selectedCampus, selectedDept);
+        console.log('getBatchesBasedOnDepartment empty list, using fallbacks:', fallbacks);
+        setBatches(fallbacks);
+      }
     } catch (error) {
       console.error('Error fetching batches:', error);
-      setBatches([]);
+      const fallbacks = getFallbackBatches(selectedCampus, selectedDept);
+      console.log('Error fetching batches, using fallbacks:', fallbacks);
+      setBatches(fallbacks);
     }
   };
 
@@ -196,7 +355,7 @@ const UserManagement = () => {
     if (r === 'student') return { bg: 'rgba(34,197,94,0.15)', color: '#4ade80', border: 'rgba(34,197,94,0.3)' };
     if (r === 'security guard' || r === 'security') return { bg: 'rgba(234,179,8,0.15)', color: '#facc15', border: 'rgba(234,179,8,0.3)' };
     if (r === 'reception') return { bg: 'rgba(20,184,166,0.15)', color: '#2dd4bf', border: 'rgba(20,184,166,0.3)' };
-    return { bg: 'rgba(255,255,255,0.08)', color: 'var(--text-secondary)', border: 'rgba(255,255,255,0.15)' };
+    return { bg: 'var(--surface-hover)', color: 'var(--text-secondary)', border: 'var(--glass-border)' };
   };
 
   const getFilteredUsers = () => {
@@ -316,8 +475,7 @@ const UserManagement = () => {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h3>User Management</h3>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <input
             type="file"
@@ -370,16 +528,42 @@ const UserManagement = () => {
             return (
               <div
                 key={index}
-                className="glass-panel"
-                style={{ padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', transition: 'background 0.2s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                className="glass-panel responsive-card"
+                style={{ padding: '1rem 1.25rem', transition: 'background 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
                 {/* Avatar + Info */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
                   {/* Avatar */}
-                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: badge.bg, border: `1px solid ${badge.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 700, color: badge.color }}>
-                    {(user.name || 'U').charAt(0).toUpperCase()}
+                  <div style={{ 
+                    width: '44px', height: '44px', borderRadius: '50%', 
+                    overflow: 'hidden', border: `1px solid ${badge.border}`, 
+                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    background: 'var(--surface-hover)', boxShadow: 'var(--glass-shadow)',
+                    position: 'relative'
+                  }}>
+                    {user.img && user.img.trim() !== "" ? (
+                      <>
+                        <img 
+                          src={getUrl(user.img)} 
+                          alt="" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          onError={(e) => { 
+                            e.target.style.display = 'none'; 
+                            const sibling = e.target.nextSibling;
+                            if (sibling) sibling.style.display = 'flex';
+                          }} 
+                        />
+                        <span style={{ display: 'none', fontSize: '1.1rem', fontWeight: 700, color: badge.color }}>
+                          {(user.name || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '1.1rem', fontWeight: 700, color: badge.color }}>
+                        {(user.name || 'U').charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </div>
 
                   {/* Details */}
@@ -410,7 +594,7 @@ const UserManagement = () => {
                         </span>
                       )}
                       {isStudent && user.batch && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.1rem 0.5rem', borderRadius: '6px', background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.1rem 0.5rem', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                           📋 {user.batch}
                         </span>
                       )}
@@ -424,7 +608,7 @@ const UserManagement = () => {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                <div className="responsive-card-actions" style={{ flexShrink: 0 }}>
                   <button onClick={() => openEditForm(user)} className="btn btn-outline" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>Edit</button>
                   <button onClick={() => handleRemove(user.email)} className="btn btn-danger" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>Remove</button>
                 </div>

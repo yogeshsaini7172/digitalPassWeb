@@ -1,6 +1,21 @@
 // In dev: uses Vite proxy (/api). In production: hits backend directly via env variable.
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+const getErrorMessage = async (response, fallbackPrefix = '') => {
+  try {
+    const errText = await response.text();
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed && parsed.message) {
+        return parsed.message;
+      }
+    } catch (e) {}
+    return fallbackPrefix ? `${fallbackPrefix}: ${errText}` : errText;
+  } catch (e) {
+    return fallbackPrefix || `Server error ${response.status}`;
+  }
+};
+
 export const loginUser = async (email, password) => {
   const response = await fetch(`${BASE_URL}/login-user`, {
     method: 'POST',
@@ -275,8 +290,7 @@ export const getAllottedSecurityGuard = async (data) => {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.json();
 };
@@ -288,8 +302,7 @@ export const saveAllottedSecurityGuard = async (data) => {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.text();
 };
@@ -302,8 +315,7 @@ export const getSelfUserGatePass = async (token) => {
     body: JSON.stringify(token),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.json();
 };
@@ -315,8 +327,7 @@ export const applyForGatePass = async (data) => {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.json();
 };
@@ -328,8 +339,7 @@ export const checkPermissionOfSecurityGuard = async (token) => {
     body: JSON.stringify(token),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.text();
 };
@@ -341,8 +351,7 @@ export const getAllMemberForVisitor = async (token) => {
     body: JSON.stringify(token),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.json();
 };
@@ -354,8 +363,7 @@ export const enterVisitor = async (formData) => {
     body: formData, // FormData automatically sets the boundary and content-type
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.text();
 };
@@ -366,8 +374,101 @@ export const editVisitor = async (formData) => {
     body: formData,
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Server error ${response.status}: ${errText}`);
+    throw new Error(await getErrorMessage(response, `Server error ${response.status}`));
   }
   return response.text();
+};
+
+export const sendVerificationCode = async (email) => {
+  const response = await fetch(`${BASE_URL}/send-verification-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(email),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to send verification code');
+  }
+  return response.json();
+};
+
+export const verifyVerificationCode = async (email, verificationCode) => {
+  const response = await fetch(`${BASE_URL}/verify-verification-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, verificationCode }),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Invalid verification code');
+  }
+  return response.json();
+};
+
+export const updatePassword = async (email, verificationCode, newPassword) => {
+  const response = await fetch(`${BASE_URL}/update-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, verificationCode, newPassword }),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to update password');
+  }
+  return response.json();
+};
+
+export const getCampusLocation = async (token) => {
+  const response = await fetch(`${BASE_URL}/get-campus-location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(token),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to fetch campus locations');
+  }
+  return response.json();
+};
+
+export const saveCampusLocation = async (data) => {
+  const response = await fetch(`${BASE_URL}/save-campus-location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to save campus location');
+  }
+  return response.json();
+};
+
+export const createCampusLocation = async (data) => {
+  const response = await fetch(`${BASE_URL}/create-campus-location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to create campus location');
+  }
+  return response.json();
+};
+
+export const uploadProfileImage = async (file, token) => {
+  const formData = new FormData();
+  formData.append('img', file);
+  formData.append('token', token);
+
+  const response = await fetch(`${BASE_URL}/upload-profile-image`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to upload profile image');
+  }
+  return response.json();
 };
