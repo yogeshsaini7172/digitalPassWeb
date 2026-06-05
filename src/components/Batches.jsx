@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getAllBatches, getCampusAndDepartment, removeBatch, editBatch, getLeveledMember, getAllMemberForLevel, getDataForBatch, addNewBatch } from '../services/api';
+import { getAllBatches, getCampusAndDepartment, removeBatch, editBatch, getLeveledMember, getAllMemberForLevel, getDataForBatch, addNewBatch, getMembersForUserManagement, editUser, getRoleBasedOnDepartment, getBatchesBasedOnDepartment } from '../services/api';
 
 const Batches = () => {
   const [batches, setBatches] = useState([]);
@@ -7,6 +7,7 @@ const Batches = () => {
   const [studentBatches, setStudentBatches] = useState([]);
   const [otherBatches, setOtherBatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [allUsers, setAllUsers] = useState([]);
   
   // For Admin campus selection
   const [campuses, setCampuses] = useState([]);
@@ -34,6 +35,20 @@ const Batches = () => {
   const [addLevel1Selected, setAddLevel1Selected] = useState([]);
   const [addLevel2Selected, setAddLevel2Selected] = useState([]);
   const [addAvailableMembers, setAddAvailableMembers] = useState([]);
+
+  // View Members Modal State
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [selectedBatchMembers, setSelectedBatchMembers] = useState([]);
+  const [viewingBatchName, setViewingBatchName] = useState('');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+
+  // Edit User Profile Modal State
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editDepartments, setEditDepartments] = useState([]);
+  const [editRoles, setEditRoles] = useState([]);
+  const [editBatches, setEditBatches] = useState([]);
+  const [editCampuses, setEditCampuses] = useState([]);
 
   const userRole = localStorage.getItem('userRole') || '';
   const userCampus = localStorage.getItem('userCampus') || '';
@@ -79,9 +94,21 @@ const Batches = () => {
       const students = data?.student || [];
       const others = data?.member || [];
       
-      setStudentBatches(students);
-      setOtherBatches(others);
-      setAllBatches([...students, ...others]);
+      const usersData = await getMembersForUserManagement(token);
+      setAllUsers(usersData || []);
+      const batchCounts = {};
+      (usersData || []).forEach(u => {
+        if (u.batch) {
+          batchCounts[u.batch] = (batchCounts[u.batch] || 0) + 1;
+        }
+      });
+
+      const studentBatchesWithCount = students.map(b => ({ name: b, count: batchCounts[b] || 0 }));
+      const otherBatchesWithCount = others.map(b => ({ name: b, count: batchCounts[b] || 0 }));
+      
+      setStudentBatches(studentBatchesWithCount);
+      setOtherBatches(otherBatchesWithCount);
+      setAllBatches([...studentBatchesWithCount, ...otherBatchesWithCount]);
     } catch (error) {
       console.error('Error fetching batches:', error);
       setAllBatches([]);
@@ -97,7 +124,7 @@ const Batches = () => {
     else baseList = allBatches;
 
     if (searchQuery) {
-      baseList = baseList.filter(b => b.toLowerCase().includes(searchQuery.toLowerCase()));
+      baseList = baseList.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     setBatches(baseList);
   };
@@ -174,6 +201,114 @@ const Batches = () => {
     } catch (error) {
       console.error('Error saving batch:', error);
       alert('Failed to save batch. ' + error.message);
+    }
+  };
+
+  const handleViewMembers = (batchName) => {
+    const membersInBatch = allUsers.filter(u => u.batch === batchName);
+    setViewingBatchName(batchName);
+    setSelectedBatchMembers(membersInBatch);
+    setIsMembersModalOpen(true);
+  };
+
+  const handleUserClick = async (user) => {
+    setEditingUser({
+      ...user,
+      previousEmail: user.email,
+      fathername: user.fatherName || user.fathername || '',
+      fatherphone: user.fatherPhone || user.fatherphone || '',
+    });
+    setIsEditUserModalOpen(true);
+    
+    // Fetch options for dropdowns
+    try {
+      const token = localStorage.getItem('token');
+      const campusDeptData = await getCampusAndDepartment(token);
+      const fetchedCampuses = campusDeptData.campus || ["SISTec-Gandhi Nagar", "SISTec-Ratibad"];
+      const fetchedDepts = campusDeptData.department || [
+          "COMPUTER SCIENCE", "INFORMATION TECHNOLOGY", "MECHANICAL ENGINEERING",
+          "CIVIL ENGINEERING", "ELECTRICAL ENGINEERING", "ELECTRONICS & COMMUNICATION",
+          "MBA", "ADMINISTRATION"
+      ];
+      setEditCampuses(fetchedCampuses);
+      setEditDepartments(fetchedDepts);
+
+      if (user.department) {
+        const rolesData = await getRoleBasedOnDepartment({ department: user.department, token });
+        setEditRoles(rolesData || ["student"]);
+        
+        if (user.role?.toLowerCase() === 'student') {
+          const batchPayload = { department: user.department, role: user.role, token };
+          if (userRole === 'admin') batchPayload.campus = user.campus || fetchedCampuses[0];
+          const batchesData = await getBatchesBasedOnDepartment(batchPayload);
+          setEditBatches(batchesData || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching dropdown data for edit:', error);
+    }
+  };
+
+  // Watch for department/role changes in edit modal
+  useEffect(() => {
+    if (isEditUserModalOpen && editingUser?.department) {
+      const fetchEditRoles = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const rolesData = await getRoleBasedOnDepartment({ department: editingUser.department, token });
+          setEditRoles(rolesData || ["student"]);
+        } catch (error) {}
+      };
+      fetchEditRoles();
+    }
+  }, [editingUser?.department, isEditUserModalOpen]);
+
+  useEffect(() => {
+    if (isEditUserModalOpen && editingUser?.department && editingUser?.role) {
+      const fetchEditBatches = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const batchPayload = { department: editingUser.department, role: editingUser.role, token };
+          if (userRole === 'admin') batchPayload.campus = editingUser.campus;
+          const batchesData = await getBatchesBasedOnDepartment(batchPayload);
+          setEditBatches(batchesData || []);
+        } catch (error) {}
+      };
+      if (editingUser.role.toLowerCase() === 'student') {
+        fetchEditBatches();
+      } else {
+        setEditBatches([]);
+      }
+    }
+  }, [editingUser?.department, editingUser?.role, editingUser?.campus, isEditUserModalOpen]);
+
+  const handleEditUserSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        name: editingUser.name,
+        email: editingUser.email,
+        phone: editingUser.phone,
+        department: editingUser.department,
+        role: editingUser.role,
+        uid: editingUser.uid,
+        fathername: editingUser.fathername,
+        fatherphone: editingUser.fatherphone,
+        batch: editingUser.batch,
+        campus: editingUser.campus,
+        previousEmail: editingUser.previousEmail,
+        token
+      };
+      await editUser(payload);
+      
+      const updatedUsers = allUsers.map(u => u.email === payload.previousEmail ? { ...u, ...payload } : u);
+      setAllUsers(updatedUsers);
+      setSelectedBatchMembers(updatedUsers.filter(u => u.batch === viewingBatchName));
+      setIsEditUserModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert('Failed to update user');
     }
   };
 
@@ -330,19 +465,33 @@ const Batches = () => {
         <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
           {batches.map((batch, index) => (
             <div key={index} className="glass-panel responsive-card" style={{ padding: '1.5rem' }}>
-              <h4 style={{ margin: 0, color: 'var(--text-primary)' }}>{batch}</h4>
-              <div className="responsive-card-actions">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 0.5rem', color: 'var(--text-primary)', fontSize: '1.1rem' }}>{batch.name}</h4>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--surface-hover)', padding: '0.2rem 0.6rem', borderRadius: '12px' }}>
+                    {batch.count} Members
+                  </span>
+                </div>
+              </div>
+              <div className="responsive-card-actions" style={{ marginTop: '0' }}>
                 <button 
                   className="btn btn-outline" 
-                  style={{ padding: '0.5rem 1rem' }}
-                  onClick={() => handleEditClick(batch)}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+                  onClick={() => handleViewMembers(batch.name)}
+                >
+                  Members
+                </button>
+                <button 
+                  className="btn btn-outline" 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+                  onClick={() => handleEditClick(batch.name)}
                 >
                   Edit
                 </button>
                 <button 
                   className="btn btn-danger" 
-                  style={{ padding: '0.5rem 1rem' }}
-                  onClick={() => handleRemoveBatch(batch)}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+                  onClick={() => handleRemoveBatch(batch.name)}
                 >
                   Remove
                 </button>
@@ -511,6 +660,147 @@ const Batches = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {isMembersModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: 'var(--surface-modal)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0 }}>Members of <span style={{ color: 'var(--accent-primary)' }}>{viewingBatchName}</span></h3>
+              <button onClick={() => { setIsMembersModalOpen(false); setMemberSearchQuery(''); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
+            </div>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <input
+                type="text"
+                placeholder="Search members by name..."
+                className="input-control"
+                value={memberSearchQuery}
+                onChange={(e) => setMemberSearchQuery(e.target.value)}
+                style={{ marginBottom: '0' }}
+              />
+            </div>
+            
+            {selectedBatchMembers.filter(m => m.name?.toLowerCase().includes(memberSearchQuery.toLowerCase())).length === 0 ? (
+              <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>No members found.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {selectedBatchMembers
+                  .filter(m => m.name?.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+                  .map((member, idx) => (
+                  <div key={idx} className="glass-panel" 
+                    style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--surface-hover)', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    onClick={() => handleUserClick(member)}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
+                      {(member.name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{member.name}</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{member.email}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+              <button className="btn btn-outline" onClick={() => setIsMembersModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditUserModalOpen && editingUser && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--overlay-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001, padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', background: 'var(--surface-modal)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>User Profile</h3>
+              <button onClick={() => setIsEditUserModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '2.5rem', fontWeight: 'bold', boxShadow: 'var(--glass-shadow)' }}>
+                {(editingUser.name || 'U').charAt(0).toUpperCase()}
+              </div>
+            </div>
+
+            <form onSubmit={handleEditUserSubmit}>
+              <div className="input-group">
+                <label className="input-label">Name</label>
+                <input type="text" className="input-control" value={editingUser.name || ''} onChange={e => setEditingUser({...editingUser, name: e.target.value})} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Email</label>
+                <input type="email" className="input-control" value={editingUser.email || ''} onChange={e => setEditingUser({...editingUser, email: e.target.value})} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Phone</label>
+                <input type="text" className="input-control" value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} required />
+              </div>
+
+              {userRole === 'admin' && (
+                <div className="input-group">
+                  <label className="input-label">Campus</label>
+                  <select className="input-control" value={editingUser.campus || ''} onChange={e => setEditingUser({...editingUser, campus: e.target.value})} required>
+                    <option value="">Select Campus</option>
+                    {editCampuses.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                    {editingUser.campus && !editCampuses.includes(editingUser.campus) && <option value={editingUser.campus}>{editingUser.campus}</option>}
+                  </select>
+                </div>
+              )}
+
+              <div className="input-group">
+                <label className="input-label">Department</label>
+                <select className="input-control" value={editingUser.department || ''} onChange={e => setEditingUser({...editingUser, department: e.target.value})} required>
+                  <option value="">Select Department</option>
+                  {editDepartments.map((d, i) => <option key={i} value={d}>{d}</option>)}
+                  {editingUser.department && !editDepartments.includes(editingUser.department) && <option value={editingUser.department}>{editingUser.department}</option>}
+                </select>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Role</label>
+                <select className="input-control" value={editingUser.role || ''} onChange={e => setEditingUser({...editingUser, role: e.target.value})} required>
+                  <option value="">Select Role</option>
+                  {editRoles.map((r, i) => <option key={i} value={r}>{r}</option>)}
+                  {editingUser.role && !editRoles.includes(editingUser.role) && <option value={editingUser.role}>{editingUser.role}</option>}
+                </select>
+              </div>
+
+              {editingUser.role?.toLowerCase() === 'student' && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">Batch</label>
+                    <select className="input-control" value={editingUser.batch || ''} onChange={e => setEditingUser({...editingUser, batch: e.target.value})} required>
+                      <option value="">Select Batch</option>
+                      {editBatches.map((b, i) => <option key={i} value={b}>{b}</option>)}
+                      {editingUser.batch && !editBatches.includes(editingUser.batch) && <option value={editingUser.batch}>{editingUser.batch}</option>}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">UID</label>
+                    <input type="text" className="input-control" value={editingUser.uid || ''} onChange={e => setEditingUser({...editingUser, uid: e.target.value})} required />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Father's Name</label>
+                    <input type="text" className="input-control" value={editingUser.fathername || ''} onChange={e => setEditingUser({...editingUser, fathername: e.target.value})} required />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Father's Phone</label>
+                    <input type="text" className="input-control" value={editingUser.fatherphone || ''} onChange={e => setEditingUser({...editingUser, fatherphone: e.target.value})} required />
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setIsEditUserModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Changes</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
