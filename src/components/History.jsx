@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getVisitorListHistory, getGatePassListHistory } from '../services/api';
 
-const History = ({ getImageUrl: propGetImageUrl }) => {
+const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
   const [activeTab, setActiveTab] = useState('GatePass'); // 'GatePass' or 'Visitors'
   const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -232,7 +232,8 @@ const History = ({ getImageUrl: propGetImageUrl }) => {
                       <img 
                         src={getImageUrl(selectedItem.img)} 
                         alt="User" 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
+                        onClick={(e) => { e.stopPropagation(); if(onImageClick) onImageClick(getImageUrl(selectedItem.img)); }}
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (

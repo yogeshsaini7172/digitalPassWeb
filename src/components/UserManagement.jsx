@@ -5,7 +5,7 @@ import {
   addNewUser, editUser, uploadExcelUsers
 } from '../services/api';
 
-const UserManagement = ({ getImageUrl }) => {
+const UserManagement = ({ getImageUrl, onImageClick }) => {
   const defaultGetImageUrl = (img) => {
     if (!img) return null;
     return `https://res.cloudinary.com/dtdo4gzfh/image/upload/${img}.jpg`;
@@ -18,6 +18,9 @@ const UserManagement = ({ getImageUrl }) => {
   const [loading, setLoading] = useState(true);
   const [formMode, setFormMode] = useState(null); // null, 'ADD', 'EDIT'
   const fileInputRef = useRef(null);
+
+  // Selection
+  const [selectedEmails, setSelectedEmails] = useState([]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -271,8 +274,26 @@ const UserManagement = ({ getImageUrl }) => {
       const updatedUsers = users.filter(user => user.email !== email);
       setUsers(updatedUsers);
       localStorage.setItem(CACHE_KEY, JSON.stringify(updatedUsers));
+      setSelectedEmails(prev => prev.filter(e => e !== email));
     } catch (error) {
       console.error('Error removing user:', error);
+    }
+  };
+
+  const handleRemoveSelected = async () => {
+    if (selectedEmails.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedEmails.length} user(s)?`)) return;
+    try {
+      const token = localStorage.getItem('token');
+      await removeUser({ token, removeEmails: selectedEmails });
+      
+      const updatedUsers = users.filter(user => !selectedEmails.includes(user.email));
+      setUsers(updatedUsers);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedUsers));
+      setSelectedEmails([]);
+    } catch (error) {
+      console.error('Error removing users:', error);
+      alert('Failed to remove users');
     }
   };
 
@@ -496,7 +517,16 @@ const UserManagement = ({ getImageUrl }) => {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        {selectedEmails.length > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem 1rem', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            <h3 style={{ margin: 0, color: 'var(--danger)', fontSize: '1.1rem' }}>{selectedEmails.length} Selected</h3>
+            <button onClick={() => setSelectedEmails([])} className="btn btn-outline" style={{ padding: '0.4rem 0.8rem', fontSize: '0.9rem' }}>Cancel</button>
+            <button onClick={handleRemoveSelected} className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.9rem' }}>Delete Selected</button>
+          </div>
+        ) : (
+          <div></div>
+        )}
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button onClick={() => fetchUsers(true)} className="btn btn-outline">Sync</button>
           <input
@@ -551,12 +581,23 @@ const UserManagement = ({ getImageUrl }) => {
               <div
                 key={index}
                 className="glass-panel responsive-card"
-                style={{ padding: '1rem 1.25rem', transition: 'background 0.2s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}
+                style={{ padding: '1rem 1.25rem', transition: 'background 0.2s', ...(selectedEmails.includes(user.email) ? { borderColor: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)' } : {}) }}
+                onMouseEnter={e => !selectedEmails.includes(user.email) && (e.currentTarget.style.background = 'var(--surface-hover)')}
+                onMouseLeave={e => !selectedEmails.includes(user.email) && (e.currentTarget.style.background = '')}
               >
                 {/* Avatar + Info */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
+                  <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ width: '1.1rem', height: '1.1rem', cursor: 'pointer', accentColor: 'var(--danger)' }}
+                      checked={selectedEmails.includes(user.email)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedEmails([...selectedEmails, user.email]);
+                        else setSelectedEmails(selectedEmails.filter(email => email !== user.email));
+                      }}
+                    />
+                  </div>
                   {/* Avatar */}
                   <div style={{ 
                     width: '44px', height: '44px', borderRadius: '50%', 
@@ -570,7 +611,8 @@ const UserManagement = ({ getImageUrl }) => {
                         <img 
                           src={getUrl(user.img)} 
                           alt="" 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
+                          onClick={(e) => { e.stopPropagation(); if (onImageClick) onImageClick(getUrl(user.img)); }}
                           onError={(e) => { 
                             e.target.style.display = 'none'; 
                             const sibling = e.target.nextSibling;

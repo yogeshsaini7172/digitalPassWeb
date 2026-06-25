@@ -489,3 +489,61 @@ export const uploadApkFile = async (file, token, message) => {
   }
   return response.json();
 };
+
+// REPORT MANAGEMENT
+export const getReports = async (token) => {
+  const response = await fetch(`${BASE_URL}/get-reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(token),
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, `Failed to fetch reports`));
+  }
+  return response.json();
+};
+
+export const removeReport = async (data) => {
+  const response = await fetch(`${BASE_URL}/remove-report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, `Failed to remove report(s)`));
+  }
+  return response.text();
+};
+
+export const addReport = async (formData) => {
+  const response = await fetch(`${BASE_URL}/add-report`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, `Failed to add report`));
+  }
+  return response.json();
+};
+
+export const getAllDepartment = async () => {
+  const response = await fetch(`${BASE_URL}/get-all-department`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, `Failed to fetch departments`));
+  }
+  return response.json();
+};
+
+export const logoutUser = async (data) => {
+  const response = await fetch(`${BASE_URL}/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, `Failed to logout`));
+  }
+  return response.text();
+};

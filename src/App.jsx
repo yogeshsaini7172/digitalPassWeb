@@ -18,9 +18,21 @@ function App() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userLevel');
+  const handleLogout = async (logoutType) => {
+    const token = localStorage.getItem('token');
+    if (token && logoutType) {
+      try {
+        const { logoutUser } = await import('./services/api');
+        await logoutUser({ token, logoutType });
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    }
+    // Fully clear storage to match Android app's SharedPreferences.clear()
+    localStorage.clear();
+    import('./services/socket').then(({ disconnectSocket }) => {
+      disconnectSocket();
+    });
     setIsAuthenticated(false);
   };
 

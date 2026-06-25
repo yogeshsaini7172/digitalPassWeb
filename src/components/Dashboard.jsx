@@ -11,6 +11,7 @@ import MyGatePass from './MyGatePass';
 import EnterVisitorModal from './EnterVisitorModal';
 import CampusLocation from './CampusLocation';
 import AppUpdate from './AppUpdate';
+import ReportManagement from './ReportManagement';
 
 // Helper: checks if applyDate is today (so actions are enabled)
 const isToday = (dateStr) => {
@@ -31,7 +32,7 @@ const statusColor = (status) => {
 /* ─────────────────────────────────────────────────────────
    VISITOR DETAIL MODAL
 ───────────────────────────────────────────────────────── */
-const VisitorDetailModal = ({ item, onClose, onRefresh, getImageUrl, onEditStart }) => {
+const VisitorDetailModal = ({ item, onClose, onRefresh, getImageUrl, onEditStart, onImageClick }) => {
   const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
   const userEmail = localStorage.getItem('userEmail') || '';
   const token = localStorage.getItem('token');
@@ -140,7 +141,7 @@ const VisitorDetailModal = ({ item, onClose, onRefresh, getImageUrl, onEditStart
               <div className="glass-panel" style={{ padding: '1.25rem', background: 'var(--surface-card)', display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                 <div style={{ width: '90px', height: '90px', borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--accent-primary)', flexShrink: 0, background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glass-shadow)' }}>
                   {item.img ? (
-                    <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); if(onImageClick) onImageClick(getImageUrl(item.img)); }} onError={(e) => { e.target.style.display = 'none'; }} />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
                       {(item.name || 'V').charAt(0).toUpperCase()}
@@ -293,7 +294,7 @@ const VisitorDetailModal = ({ item, onClose, onRefresh, getImageUrl, onEditStart
 };
 
 
-const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl }) => {
+const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageClick }) => {
   const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
   const userEmail = localStorage.getItem('userEmail') || '';
 
@@ -468,7 +469,7 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl }) => {
               <div className="glass-panel" style={{ padding: '1.25rem', background: 'var(--surface-card)', display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                 <div style={{ width: '90px', height: '90px', borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--accent-primary)', flexShrink: 0, background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glass-shadow)' }}>
                   {item.img ? (
-                    <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); if(onImageClick) onImageClick(getImageUrl(item.img)); }} onError={(e) => { e.target.style.display = 'none'; }} />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
                       {(item.name || 'U').charAt(0).toUpperCase()}
@@ -647,7 +648,8 @@ const DashboardContent = ({
   selectedGatePass, setSelectedGatePass,
   selectedVisitor, setSelectedVisitor,
   isEnterVisitorModalOpen, setIsEnterVisitorModalOpen,
-  editVisitorData, setEditVisitorData
+  editVisitorData, setEditVisitorData,
+  onImageClick
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
@@ -667,6 +669,9 @@ const DashboardContent = ({
             <button className={`btn ${activeTab === 'GatePass' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('GatePass')}>Gate Passes</button>
           )}
           <button className={`btn ${activeTab === 'Visitors' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('Visitors')}>Visitors</button>
+          {userRole?.toLowerCase() !== 'student' && (
+            <button className={`btn ${activeTab === 'Reports' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('Reports')}>Reports</button>
+          )}
         </div>
         <button 
           onClick={toggleTheme} 
@@ -678,6 +683,9 @@ const DashboardContent = ({
         </button>
       </div>
 
+      {activeTab === 'Reports' ? (
+        <ReportManagement getImageUrl={getImageUrl} onImageClick={onImageClick} />
+      ) : (
       <div className="page-content animate-fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h3 style={{ margin: 0 }}>Recent {activeTab === 'GatePass' ? 'Gate Passes' : 'Visitors'}</h3>
@@ -725,7 +733,7 @@ const DashboardContent = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--glass-border)' }}>
                       {item.img ? (
-                        <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={getImageUrl(item.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); if(onImageClick) onImageClick(getImageUrl(item.img)); }} />
                       ) : (
                         <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent-primary)' }}>{(item.name || 'U').charAt(0).toUpperCase()}</span>
                       )}
@@ -750,6 +758,7 @@ const DashboardContent = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Gate Pass Detail Modal */}
       {selectedGatePass && (
@@ -758,6 +767,7 @@ const DashboardContent = ({
           onClose={() => setSelectedGatePass(null)}
           onRefresh={onRefresh}
           getImageUrl={getImageUrl}
+          onImageClick={onImageClick}
         />
       )}
 
@@ -768,6 +778,7 @@ const DashboardContent = ({
           onClose={() => setSelectedVisitor(null)}
           onRefresh={onRefresh}
           getImageUrl={getImageUrl}
+          onImageClick={onImageClick}
           onEditStart={(item) => {
             setEditVisitorData(item);
             setIsEnterVisitorModalOpen(true);
@@ -900,7 +911,15 @@ const Dashboard = ({ onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutTypeSelection, setLogoutTypeSelection] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState(null);
+
+  const handleImageClick = (url) => {
+    if (url) {
+      setFullScreenImage(url);
+    }
+  };
 
   const toggleSidebarCollapse = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -1130,10 +1149,13 @@ const Dashboard = ({ onLogout }) => {
       let data = [];
       if (activeTab === 'GatePass') {
         data = await getRecentGatePassList(token);
-      } else {
+      } else if (activeTab === 'Visitors') {
         data = await getRecentVisitorList(token);
       }
-      setDataList(data || []);
+      
+      if (activeTab !== 'Reports') {
+        setDataList(data || []);
+      }
     } catch (error) {
       console.error(`Error fetching ${activeTab}:`, error);
     } finally {
@@ -1174,11 +1196,11 @@ const Dashboard = ({ onLogout }) => {
       case 'Batches':
         return <Batches />;
       case 'UserManagement':
-        return <UserManagement getImageUrl={getImageUrl} />;
+        return <UserManagement getImageUrl={getImageUrl} onImageClick={handleImageClick} />;
       case 'History':
-        return <History getImageUrl={getImageUrl} />;
+        return <History getImageUrl={getImageUrl} onImageClick={handleImageClick} />;
       case 'MyGatePass':
-        return <MyGatePass getImageUrl={getImageUrl} />;
+        return <MyGatePass getImageUrl={getImageUrl} onImageClick={handleImageClick} />;
       case 'CampusLocation':
         return <CampusLocation />;
       case 'Dashboard':
@@ -1202,6 +1224,7 @@ const Dashboard = ({ onLogout }) => {
             setIsEnterVisitorModalOpen={setIsEnterVisitorModalOpen}
             editVisitorData={editVisitorData}
             setEditVisitorData={setEditVisitorData}
+            onImageClick={handleImageClick}
           />
         );
       case 'AppUpdate':
@@ -1501,7 +1524,8 @@ const Dashboard = ({ onLogout }) => {
                       <img
                         src={getImageUrl(userData.img)}
                         alt="User"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); handleImageClick(getImageUrl(userData.img)); }}
                       />
                     ) : (
                       <span style={{ fontSize: '3rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
@@ -1534,7 +1558,7 @@ const Dashboard = ({ onLogout }) => {
                 {/* Details Grid below */}
                 <div style={{ width: '100%', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
                   {Object.keys(userData).map(key => {
-                    if (!userData[key] || ['img', 'token', 'password', 'v', '_id', '__v', 'theme'].includes(key)) return null;
+                    if (!userData[key] || ['img', 'token', 'password', 'v', '_id', '__v', 'theme', 'versionId', 'versionMessage', 'downloadUrl'].includes(key)) return null;
 
                     return (
                       <div key={key} className="glass-panel" style={{ padding: '1rem', background: 'var(--surface-card)' }}>
@@ -1559,6 +1583,13 @@ const Dashboard = ({ onLogout }) => {
               <button className="btn btn-outline" onClick={() => { setIsProfileModalOpen(false); setUploadError(''); setUploadSuccess(''); }}>Close</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {fullScreenImage && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }} onClick={() => setFullScreenImage(null)}>
+          <img src={fullScreenImage} alt="Full screen" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()} />
+          <button onClick={() => setFullScreenImage(null)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '2.5rem', cursor: 'pointer' }}>&times;</button>
         </div>
       )}
 
@@ -1588,26 +1619,57 @@ const Dashboard = ({ onLogout }) => {
             boxShadow: 'var(--glass-shadow)', textAlign: 'center'
           }}>
             <div style={{ fontSize: '3rem', margin: '0 auto' }}>🚪</div>
-            <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Confirm Logout</h3>
-            <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-              Are you sure you want to log out of your session?
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-              <button 
-                className="btn btn-outline" 
-                onClick={() => setShowLogoutConfirm(false)}
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-              <button 
-                className="btn btn-danger" 
-                onClick={onLogout}
-                style={{ flex: 1 }}
-              >
-                Yes, Logout
-              </button>
-            </div>
+            {!logoutTypeSelection ? (
+              <>
+                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Logout Options</h3>
+                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  Do you want to log out from this device or all devices?
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                  <button 
+                    className="btn btn-outline" 
+                    onClick={() => setLogoutTypeSelection('thisUser')}
+                  >
+                    Logout from this device
+                  </button>
+                  <button 
+                    className="btn btn-outline" 
+                    onClick={() => setLogoutTypeSelection('allUser')}
+                  >
+                    Logout from all devices
+                  </button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => { setShowLogoutConfirm(false); setLogoutTypeSelection(''); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Confirm Logout</h3>
+                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  Are you sure you want to log out from {logoutTypeSelection === 'thisUser' ? 'this device' : 'ALL devices'}?
+                </p>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                  <button 
+                    className="btn btn-outline" 
+                    onClick={() => setLogoutTypeSelection('')}
+                    style={{ flex: 1 }}
+                  >
+                    Back
+                  </button>
+                  <button 
+                    className="btn btn-danger" 
+                    onClick={() => { onLogout(logoutTypeSelection); setLogoutTypeSelection(''); }}
+                    style={{ flex: 1 }}
+                  >
+                    Yes, Logout
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

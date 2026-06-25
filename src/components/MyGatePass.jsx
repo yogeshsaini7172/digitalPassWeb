@@ -321,7 +321,7 @@ const ApplyModal = ({ onClose, onSuccess }) => {
 /* ─────────────────────────────────────────────────────────
    GATE PASS DETAIL MODAL (self-user view)
 ───────────────────────────────────────────────────────── */
-const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl }) => {
+const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl, onImageClick }) => {
   const [removing, setRemoving] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -396,7 +396,7 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl }) => {
               <div className="glass-panel" style={{ padding: '1.25rem', background: 'var(--surface-card)', display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                 <div style={{ width: '90px', height: '90px', borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--accent-primary)', flexShrink: 0, background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glass-shadow)' }}>
                   {pass.img ? (
-                    <img src={getImageUrl(pass.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={getImageUrl(pass.img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); if (onImageClick) onImageClick(getImageUrl(pass.img)); }} onError={(e) => { e.target.style.display = 'none'; }} />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
                       {(pass.name || 'U').charAt(0).toUpperCase()}
@@ -472,7 +472,7 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl }) => {
 /* ─────────────────────────────────────────────────────────
    MY GATE PASS — main component
 ───────────────────────────────────────────────────────── */
-const MyGatePass = ({ getImageUrl: propGetImageUrl }) => {
+const MyGatePass = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
   const [passes, setPasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showApplyModal, setShowApplyModal] = useState(false);
@@ -807,6 +807,7 @@ const MyGatePass = ({ getImageUrl: propGetImageUrl }) => {
           onClose={() => setSelectedPass(null)}
           onRemoved={handleRemoved}
           getImageUrl={getImageUrl}
+          onImageClick={onImageClick}
         />
       )}
     </>
