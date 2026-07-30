@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/digitalPassWeb/sw.js', { scope: '/digitalPassWeb/' })})}
