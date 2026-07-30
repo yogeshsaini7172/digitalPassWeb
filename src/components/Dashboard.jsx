@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getRecentGatePassList, getRecentVisitorList, approveGatePass, rejectGatePass, editGatePass, removeGatePassBySelfUser, meetVisitor, checkPermissionOfSecurityGuard, uploadProfileImage } from '../services/api';
+import { approveGatePass, rejectGatePass, editGatePass, removeGatePassBySelfUser, meetVisitor, checkPermissionOfSecurityGuard, uploadProfileImage, approveInterInstitutionalGatePassByMember, rejectInterInstitutionalGatePass, exitInterInstitutionalGatePass } from '../services/api';
+import { useActiveGatePasses, useActiveInterInstitutionalGatePasses, useActiveVisitors, triggerGatePassSync, triggerInterInstitutionalGatePassSync, triggerVisitorSync } from '../viewmodels/PassViewModel';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { useTheme } from '../ThemeContext';
+import { db } from '../database/db';
 import logoImg from '../assets/Dlogo.png';
 import UserManagement from './UserManagement';
 import Batches from './Batches';
@@ -12,7 +14,8 @@ import EnterVisitorModal from './EnterVisitorModal';
 import CampusLocation from './CampusLocation';
 import AppUpdate from './AppUpdate';
 import ReportManagement from './ReportManagement';
-
+import PremiumProgressIndicator from './PremiumProgressIndicator';
+import PremiumInterProgressIndicator from './PremiumInterProgressIndicator';
 // Helper: checks if applyDate is today (so actions are enabled)
 const isToday = (dateStr) => {
   if (!dateStr) return false;
@@ -24,9 +27,34 @@ const isToday = (dateStr) => {
 // Status badge colour helper
 const statusColor = (status) => {
   const s = (status || '').toLowerCase();
-  if (s === 'approved' || s === 'meet' || s === 'exit') return 'var(--success)';
-  if (s === 'rejected') return 'var(--danger)';
-  return 'var(--warning)';
+  if (s === 'approved' || s === 'meet') return '#28a745'; // success green
+  if (s === 'rejected') return '#dc3545'; // danger red
+  if (s === 'approving') return '#f39c12'; // orange
+  if (s === 'exit') return '#17a2b8'; // info blue
+  if (s === 'expired') return '#795548'; // brown
+  return '#636e72'; // pending / default gray
+};
+
+const statusLabel = (status) => {
+  const s = (status || '').toLowerCase();
+  if (s === 'approving') return 'In Process';
+  return (status || 'pending').toUpperCase();
+};
+
+const parseDateStr = (dStr) => {
+  if (!dStr) return 0;
+  let t = new Date(dStr).getTime();
+  if (!isNaN(t)) return t;
+  // Fallback for "YYYY-MM-DD hh:mm AM/PM"
+  const match = dStr.match(/(\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (match) {
+    let [_, y, m, d, h, min, ampm] = match;
+    h = parseInt(h, 10);
+    if (ampm && ampm.toUpperCase() === 'PM' && h < 12) h += 12;
+    if (ampm && ampm.toUpperCase() === 'AM' && h === 12) h = 0;
+    return new Date(y, m - 1, d, h, min).getTime();
+  }
+  return 0;
 };
 
 /* ─────────────────────────────────────────────────────────
@@ -327,19 +355,40 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
     setTimeout(() => setFeedback(null), 3000);
   };
 
+  const optimisticUpdate = async (newStatus) => {
+    try {
+      const dbTable = item.destinationCampus ? db.interInstitutionalGatePasses : db.gatePasses;
+      const existing = await dbTable.get(Number(item.gatePassId));
+      if (existing) {
+        existing.status = newStatus;
+        if (approvalRemark && approvalRemark.trim()) existing.tgRemark = approvalRemark.trim();
+        await dbTable.put(existing);
+      }
+    } catch (e) { console.error('Optimistic update failed', e); }
+  };
+
   /* ── Approve ── */
   const handleApprove = async () => {
-    if (!approvalRemark.trim()) {
-      showMsg('error', 'Please enter your authority remark before approving.');
+    if (item.role === 'student' && !approvalRemark.trim()) {
+      showMsg('error', 'Please enter your authority remark before approving a student pass.');
       return;
     }
     setActionLoading(true);
     try {
-      await approveGatePass({ token, gatePassId: item.gatePassId, tgRemark: approvalRemark });
+      // Only include tgRemark in payload when it is a student's pass (avoids backend misinterpretation for other roles)
+      const payload = { token, gatePassId: item.gatePassId };
+      if (item.role === 'student' && approvalRemark.trim()) payload.tgRemark = approvalRemark.trim();
+      if (item.destinationCampus) {
+        payload.destinationCampus = item.destinationCampus;
+        await approveInterInstitutionalGatePassByMember(payload);
+      } else {
+        await approveGatePass(payload);
+      }
+      await optimisticUpdate('approved');
       showMsg('success', 'Gate pass approved successfully!');
       setTimeout(() => { onClose(); onRefresh(); }, 1200);
-    } catch {
-      showMsg('error', 'Failed to approve. Please try again.');
+    } catch (err) {
+      showMsg('error', err?.message || 'Failed to approve. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -349,7 +398,12 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
   const handleReject = async () => {
     setActionLoading(true);
     try {
-      await rejectGatePass({ token, gatePassId: item.gatePassId });
+      if (item.destinationCampus) {
+        await rejectInterInstitutionalGatePass({ token, gatePassId: item.gatePassId, destinationCampus: item.destinationCampus });
+      } else {
+        await rejectGatePass({ token, gatePassId: item.gatePassId });
+      }
+      await optimisticUpdate('rejected');
       showMsg('success', 'Gate pass rejected.');
       setTimeout(() => { onClose(); onRefresh(); }, 1200);
     } catch {
@@ -363,8 +417,24 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
   const handleExit = async () => {
     setActionLoading(true);
     try {
-      await approveGatePass({ token, gatePassId: item.gatePassId });
-      showMsg('success', 'Gate pass marked as exited.');
+      if (item.destinationCampus) {
+        await exitInterInstitutionalGatePass({ token, gatePassId: item.gatePassId, destinationCampus: item.destinationCampus });
+      } else {
+        await approveGatePass({ token, gatePassId: item.gatePassId });
+      }
+      
+      let newStatus = 'exit';
+      if (item.destinationCampus) {
+        const userCampus = localStorage.getItem('userCampus') || '';
+        if (item.campus === userCampus) {
+          newStatus = item.status !== 'approved' ? 'Entered into source campus' : 'Exited from source campus';
+        } else {
+          newStatus = item.status === 'Exited from source campus' ? 'Entered into destination campus' : 'Exited from destination campus';
+        }
+      }
+      await optimisticUpdate(newStatus);
+      
+      showMsg('success', 'Gate pass marked as exited/entered.');
       setTimeout(() => { onClose(); onRefresh(); }, 1200);
     } catch {
       showMsg('error', 'Failed to mark exit. Please try again.');
@@ -378,6 +448,8 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
     setActionLoading(true);
     try {
       await removeGatePassBySelfUser({ token, gatePassId: item.gatePassId });
+      const dbTable = item.destinationCampus ? db.interInstitutionalGatePasses : db.gatePasses;
+      await dbTable.delete(Number(item.gatePassId));
       showMsg('success', 'Gate pass removed successfully.');
       setTimeout(() => { onClose(); onRefresh(); }, 1200);
     } catch {
@@ -392,8 +464,8 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
     if (!editReason.trim()) { showMsg('error', 'Reason cannot be empty.'); return; }
 
     const changes = {};
-    if (editReason !== item.reason) changes.reason = editReason;
-    if (editTgRemark !== (item.tgRemark || '') && !isSelf) changes.tgRemark = editTgRemark;
+    if (editReason !== (item.reason || '')) changes.reason = editReason;
+    if (editTgRemark !== (item.tgRemark || '')) changes.tgRemark = editTgRemark;
 
     if (Object.keys(changes).length === 0) {
       showMsg('success', 'No changes made.');
@@ -403,7 +475,7 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
 
     setActionLoading(true);
     try {
-      await editGatePass({ token, gatePassId: item.gatePassId, ...changes });
+      await editGatePass({ token, gatePassId: item.gatePassId, ...changes, ...(item.destinationCampus ? { destinationCampus: item.destinationCampus } : {}) });
       showMsg('success', 'Gate pass updated successfully!');
       setEditMode(false);
       onRefresh();
@@ -488,15 +560,7 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
               {/* Reason Card */}
               <div className="glass-panel" style={{ padding: '1.25rem', background: 'var(--surface-card)' }}>
                 <label style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Reason for Leave</label>
-                {editMode && !isSelf ? (
-                  <textarea
-                    className="input-control"
-                    rows={2}
-                    value={editReason}
-                    onChange={(e) => setEditReason(e.target.value)}
-                    style={{ resize: 'vertical', marginBottom: 0 }}
-                  />
-                ) : editMode && isSelf ? (
+                {editMode ? (
                   <textarea
                     className="input-control"
                     rows={2}
@@ -575,15 +639,22 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
 
           </div>
 
-          {/* ── tgRemark (Authority Remark) — shown if exists ── */}
-          {(item.tgRemark || (canAct && !isSelf && !isSecurityGuard)) && (
+          {/* ── Progress Indicator ── */}
+          {item.destinationCampus ? (
+            <PremiumInterProgressIndicator pass={item} />
+          ) : (
+            <PremiumProgressIndicator pass={item} />
+          )}
+
+          {/* ── tgRemark (Authority Remark) — shown if exists or if required for student approval ── */}
+          {(item.tgRemark || (canAct && !isSecurityGuard && item.role === 'student')) && (
             <div className="glass-panel" style={{ padding: '1.25rem', background: 'var(--surface-card)' }}>
               <label style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Authority Remark</label>
-              {(editMode && !isSelf) || (!item.tgRemark && canAct && !isSelf && !isSecurityGuard) ? (
+              {editMode || (!item.tgRemark && canAct && !isSecurityGuard && item.role === 'student') ? (
                 <textarea
                   className="input-control"
                   rows={2}
-                  placeholder="Enter your authority remark (required for approval)…"
+                  placeholder="Enter your authority remark (required for student approval)…"
                   value={editMode ? editTgRemark : approvalRemark}
                   onChange={(e) => editMode ? setEditTgRemark(e.target.value) : setApprovalRemark(e.target.value)}
                   style={{ resize: 'vertical', marginBottom: 0 }}
@@ -605,19 +676,25 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
           {/* ── Action Buttons ── */}
           {!editMode && (
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-              {isSecurityGuard && item.status === 'approved' && (
+              {isSecurityGuard && (
+                (item.destinationCampus && ['approved', 'Exited from source campus', 'Entered into destination campus', 'Exited from destination campus'].includes(item.status)) || 
+                (!item.destinationCampus && item.status === 'approved')
+              ) && (
                 <button onClick={handleExit} disabled={actionLoading} className="btn btn-success" style={{ flex: 1, padding: '0.75rem' }}>
-                  {actionLoading ? 'Processing…' : '✓ Mark as Exited'}
+                  {actionLoading ? 'Processing…' : (
+                    // Logic mirroring Android's GatePassDetail.kt enter/exit labeling
+                    item.destinationCampus ? (
+                      item.campus === (localStorage.getItem('userCampus') || '') ? (
+                        item.status !== 'approved' ? '✓ Enter' : '✓ Exit'
+                      ) : (
+                        item.status === 'Exited from source campus' ? '✓ Enter' : '✓ Exit'
+                      )
+                    ) : '✓ Mark as Exited'
+                  )}
                 </button>
               )}
 
-              {!isSecurityGuard && isSelf && item.status === 'pending' && (
-                <button onClick={handleRemove} disabled={actionLoading} className="btn btn-danger" style={{ flex: 1, padding: '0.75rem' }}>
-                  {actionLoading ? 'Removing…' : '🗑 Remove Request'}
-                </button>
-              )}
-
-              {!isSecurityGuard && !isSelf && canAct && (
+              {!isSecurityGuard && canAct && (
                 <>
                   <button onClick={handleReject} disabled={actionLoading} className="btn btn-danger" style={{ flex: 1, padding: '0.75rem' }}>
                     {actionLoading ? '…' : '✗ Reject'}
@@ -629,7 +706,7 @@ const GatePassDetailModal = ({ item, onClose, onRefresh, getImageUrl, onImageCli
               )}
 
               <button onClick={onClose} className="btn btn-outline" style={{ padding: '0.75rem 1.5rem' }}>
-                {canAct && !isSecurityGuard && !isSelf ? 'Cancel' : 'Close'}
+                {canAct && !isSecurityGuard ? 'Cancel' : 'Close'}
               </button>
             </div>
           )}
@@ -653,10 +730,20 @@ const DashboardContent = ({
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [passTypeFilter, setPassTypeFilter] = useState('All');
 
-  const filteredData = dataList.filter(item =>
-    !searchQuery || (item.name || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredData = dataList.filter(item => {
+    const matchesSearch = !searchQuery || (item.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    
+    let matchesType = true;
+    if (activeTab === 'GatePass' && passTypeFilter !== 'All') {
+      const isInter = !!item.destinationCampus;
+      if (passTypeFilter === 'Regular' && isInter) matchesType = false;
+      if (passTypeFilter === 'Inter-Institutional' && !isInter) matchesType = false;
+    }
+
+    return matchesSearch && matchesType;
+  });
 
   return (
     <>
@@ -690,6 +777,18 @@ const DashboardContent = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h3 style={{ margin: 0 }}>Recent {activeTab === 'GatePass' ? 'Gate Passes' : 'Visitors'}</h3>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+            {activeTab === 'GatePass' && (
+              <select
+                className="input-control"
+                style={{ maxWidth: '180px', minWidth: '120px', marginBottom: 0, flex: '1 1 120px' }}
+                value={passTypeFilter}
+                onChange={(e) => setPassTypeFilter(e.target.value)}
+              >
+                <option value="All">All Types</option>
+                <option value="Regular">Regular</option>
+                <option value="Inter-Institutional">Inter-Institutional</option>
+              </select>
+            )}
             <input
               type="text"
               placeholder={`Search by name…`}
@@ -741,14 +840,22 @@ const DashboardContent = ({
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.95rem' }}>{item.name || 'Unknown'}</h4>
                       <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                        {activeTab === 'GatePass' && (
+                          <span style={{ 
+                            fontWeight: 600, 
+                            color: item.destinationCampus ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                          }}>
+                            {item.destinationCampus ? 'Inter-Institutional' : 'Regular'} · 
+                          </span>
+                        )}
                         {item.department && <span>{item.department} · </span>}
                         {item.applyDate || item.entryDate || item.date || ''}
                       </p>
                     </div>
                   </div>
                   <div className="responsive-card-actions" style={{ flexShrink: 0 }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.65rem', borderRadius: '999px', background: sc + '22', color: sc, border: `1px solid ${sc}55`, textTransform: 'capitalize' }}>
-                      {item.status || 'pending'}
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '999px', background: sc + '22', color: sc, border: `1px solid ${sc}55` }}>
+                      {statusLabel(item.status)}
                     </span>
                     <span style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>›</span>
                   </div>
@@ -901,11 +1008,12 @@ const Dashboard = ({ onLogout }) => {
 
   // Moved userRole declaration up to initialize activeView correctly
   const userRole = localStorage.getItem('userRole') || 'Member';
+  const userEmail = localStorage.getItem('userEmail') || '';
+  console.log('Dashboard rendered with userEmail:', userEmail);
   const initialView = userRole.toLowerCase() === 'student' ? 'MyGatePass' : 'Dashboard';
 
   const [activeView, setActiveView] = useState(initialView);
   const [activeTab, setActiveTab] = useState('GatePass'); // 'GatePass' or 'Visitors' for Dashboard
-  const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [securityPermission, setSecurityPermission] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1001,7 +1109,7 @@ const Dashboard = ({ onLogout }) => {
     return `https://res.cloudinary.com/dtdo4gzfh/image/upload/${img}.jpg${version}`;
   };
 
-  const fetchDataRef = useRef();
+
   const profileMenuRef = useRef(null);
 
   useEffect(() => {
@@ -1042,10 +1150,6 @@ const Dashboard = ({ onLogout }) => {
       
       // Show native desktop notification
       showBrowserNotification(event, data);
-
-      if (fetchDataRef.current) {
-        fetchDataRef.current(true, event);
-      }
     };
 
     const handleProfileImageUpdate = (data) => {
@@ -1070,6 +1174,9 @@ const Dashboard = ({ onLogout }) => {
     socket.on('gatePassInsert', handleUpdate('gatePassInsert'));
     socket.on('gatePassUpdate', handleUpdate('gatePassUpdate'));
     socket.on('gatePassStatusUpdate', handleUpdate('gatePassStatusUpdate'));
+    socket.on('interInstitutionalGatePassInsert', handleUpdate('interInstitutionalGatePassInsert'));
+    socket.on('interInstitutionalGatePassUpdate', handleUpdate('interInstitutionalGatePassUpdate'));
+    socket.on('interInstitutionalGatePassStatusUpdate', handleUpdate('interInstitutionalGatePassStatusUpdate'));
     socket.on('profileImageUpdate', handleProfileImageUpdate);
 
     // Check Security Guard Permission
@@ -1086,6 +1193,9 @@ const Dashboard = ({ onLogout }) => {
       socket.off('gatePassInsert', handleUpdate);
       socket.off('gatePassUpdate', handleUpdate);
       socket.off('gatePassStatusUpdate', handleUpdate);
+      socket.off('interInstitutionalGatePassInsert', handleUpdate);
+      socket.off('interInstitutionalGatePassUpdate', handleUpdate);
+      socket.off('interInstitutionalGatePassStatusUpdate', handleUpdate);
       socket.off('profileImageUpdate', handleProfileImageUpdate);
       // We don't necessarily want to disconnect the socket if the user is just navigating 
       // between views, but since Dashboard is the main wrapper, we'll keep it active.
@@ -1124,54 +1234,49 @@ const Dashboard = ({ onLogout }) => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isProfileModalOpen, showLogoutConfirm, selectedGatePass, selectedVisitor, isEnterVisitorModalOpen, showCropper]);
 
+  // ── Offline-first: load from local DB first, sync in background ──────────
+  const activeGatePasses              = useActiveGatePasses();
+  const activeInterInstitutional      = useActiveInterInstitutionalGatePasses();
+  const activeVisitors                = useActiveVisitors();
+
+  // Trigger background sync on mount — same as Android's setupPassSyncAndObserve
   useEffect(() => {
-    if (activeView === 'Dashboard') {
-      // Reception should always default to Visitors tab
-      if (userRole.toLowerCase() === 'reception' && activeTab === 'GatePass') {
-        setActiveTab('Visitors');
-      }
-      fetchData();
-    }
-  }, [activeTab, activeView]);
+    const token = localStorage.getItem('token');
+    triggerGatePassSync(token);
+    triggerInterInstitutionalGatePassSync(token);
+    triggerVisitorSync(token);
+  }, []);
 
-  const fetchData = async (isBackground = false, event = null) => {
-    // Optimization: ignore events that don't belong to the active tab
-    if (isBackground && event) {
-      if (activeTab === 'GatePass' && event.startsWith('visitor')) return;
-      if (activeTab === 'Visitors' && event.startsWith('gatePass')) return;
+  // Build dataList reactively from active hooks (no manual JS date filter needed)
+  const dataList = React.useMemo(() => {
+    if (activeTab === 'GatePass') {
+      return [...activeGatePasses, ...activeInterInstitutional]
+        .sort((a, b) => parseDateStr(b.applyDate) - parseDateStr(a.applyDate));
     }
+    return [...activeVisitors]
+      .sort((a, b) => parseDateStr(b.entryDate || b.meetDate) - parseDateStr(a.entryDate || a.meetDate));
+  }, [activeTab, activeGatePasses, activeInterInstitutional, activeVisitors]);
 
-    if (!isBackground) {
-      setLoading(true);
+  // Redirect reception away from Gate Pass tab
+  useEffect(() => {
+    if (activeView === 'Dashboard' && userRole.toLowerCase() === 'reception' && activeTab === 'GatePass') {
+      setActiveTab('Visitors');
     }
-    try {
-      const token = localStorage.getItem('token');
-      let data = [];
-      if (activeTab === 'GatePass') {
-        data = await getRecentGatePassList(token);
-      } else if (activeTab === 'Visitors') {
-        data = await getRecentVisitorList(token);
-      }
-      
-      if (activeTab !== 'Reports') {
-        setDataList(data || []);
-      }
-    } catch (error) {
-      console.error(`Error fetching ${activeTab}:`, error);
-    } finally {
-      if (!isBackground) {
-        setLoading(false);
-      }
-    }
-  };
+  }, [activeView, userRole, activeTab]);
 
-  fetchDataRef.current = fetchData;
+  // Loading: show spinner until we've had at least one live-query result
+  useEffect(() => {
+    setLoading(false);
+  }, [dataList]);
+
+  // Remove unused fetchData and socket listeners that were here
+  // because PassViewModel sync takes care of background loading
 
   const handleApprove = async (passId, tgRemark) => {
     try {
       const token = localStorage.getItem('token');
       await approveGatePass({ token, gatePassId: passId, tgRemark });
-      fetchData();
+      // UI will automatically update via Socket -> Dexie hook
     } catch (error) {
       console.error('Error approving:', error);
     }
@@ -1181,7 +1286,6 @@ const Dashboard = ({ onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       await rejectGatePass({ token, gatePassId: passId });
-      fetchData();
     } catch (error) {
       console.error('Error rejecting:', error);
     }
@@ -1211,7 +1315,7 @@ const Dashboard = ({ onLogout }) => {
             setActiveTab={setActiveTab}
             dataList={dataList}
             loading={loading}
-            onRefresh={fetchData}
+            onRefresh={() => {}}
             getImageUrl={getImageUrl}
             securityPermission={securityPermission}
             userRole={userRole}
@@ -1280,8 +1384,7 @@ const Dashboard = ({ onLogout }) => {
             </button>
           )}
 
-          {userRole.toLowerCase() !== 'security guard' && (
-            <button
+          <button
               onClick={() => handleViewChange('MyGatePass')}
               className="btn btn-outline"
               title="My Gate Pass"
@@ -1294,7 +1397,6 @@ const Dashboard = ({ onLogout }) => {
               </svg>
               <span>My Gate Pass</span>
             </button>
-          )}
 
           {/* SG Allotment & Batches — admin / principal / hod only */}
           {['admin', 'principal', 'hod'].includes(userRole.toLowerCase()) && (

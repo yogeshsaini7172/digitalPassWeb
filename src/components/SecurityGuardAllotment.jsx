@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getCampusForAllotment, getAllottedSecurityGuard, saveAllottedSecurityGuard } from '../services/api';
+import { getAllottedSecurityGuard, saveAllottedSecurityGuard } from '../services/api';
+import { fetchCampusesForAllotment } from '../viewmodels/CampusDepartmentViewModel';
 
 /* ─────────────────────────────────────────────────────────
    SECURITY GUARD ALLOTMENT
@@ -29,21 +30,21 @@ const SecurityGuardAllotment = () => {
   const [searchAllotted, setSearchAllotted] = useState('');
   const [searchAvailable, setSearchAvailable] = useState('');
 
-  // ── Fetch campuses on mount ──
+  // ── Fetch campuses on mount — cache-first (mirrors Android BaseActivity.fetchAndShowCampusSelection) ──
   useEffect(() => {
-    const fetch = async () => {
+    const loadCampuses = async () => {
       setLoadingCampuses(true);
       try {
-        const data = await getCampusForAllotment(token);
-        // API returns an array of campus strings
-        setCampuses(Array.isArray(data) ? data : Object.values(data).flat());
+        // Cache-first: served from IndexedDB if already cached, else fetches from network
+        const list = await fetchCampusesForAllotment(token);
+        setCampuses(list);
       } catch {
         showMsg('error', 'Failed to load campuses. Please refresh.');
       } finally {
         setLoadingCampuses(false);
       }
     };
-    fetch();
+    loadCampuses();
   }, []);
 
   // ── Load guards when campus is selected ──

@@ -13,6 +13,8 @@
     "deploy": "gh-pages -d dist -r https://github.com/yogeshsaini7172/digitalPassWeb.git"
   },
   "dependencies": {
+    "dexie": "^4.4.4",
+    "dexie-react-hooks": "^4.4.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "socket.io-client": "^4.8.1"

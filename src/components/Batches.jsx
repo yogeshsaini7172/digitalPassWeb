@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { getAllBatches, getCampusAndDepartment, removeBatch, editBatch, getLeveledMember, getAllMemberForLevel, getDataForBatch, addNewBatch, getMembersForUserManagement, editUser, getRoleBasedOnDepartment, getBatchesBasedOnDepartment } from '../services/api';
+import { removeBatch, editBatch, getLeveledMember, getAllMemberForLevel, getDataForBatch, addNewBatch, editUser, getRoleBasedOnDepartment, getBatchesBasedOnDepartment } from '../services/api';
+import { useBatches, triggerBatchSync } from '../viewmodels/BatchViewModel';
+import { useUsers } from '../viewmodels/UserViewModel';
+import { db } from '../database/db';
+import { fetchCampuses as getCampusesFromCache, fetchCampusesAndDepartments } from '../viewmodels/CampusDepartmentViewModel';
 
 const Batches = () => {
   const [batches, setBatches] = useState([]);
@@ -8,6 +12,9 @@ const Batches = () => {
   const [otherBatches, setOtherBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [allUsers, setAllUsers] = useState([]);
+  
+  const dexieBatches = useBatches();
+  const dexieUsers = useUsers();
   
   // For Admin campus selection
   const [campuses, setCampuses] = useState([]);
@@ -63,9 +70,38 @@ const Batches = () => {
 
   useEffect(() => {
     if (userRole === 'admin' && selectedCampus) {
-      fetchBatches(selectedCampus);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      triggerBatchSync(token, selectedCampus).finally(() => setLoading(false));
     }
   }, [selectedCampus]);
+
+  useEffect(() => {
+    const campus = userRole === 'admin' ? selectedCampus : userCampus;
+    if (!campus) return;
+
+    const filteredBatches = dexieBatches.filter(b => b.campus === campus);
+    const students = filteredBatches.filter(b => b.type === 'student').map(b => b.name);
+    const others = filteredBatches.filter(b => b.type === 'member').map(b => b.name);
+    
+    setAllUsers(dexieUsers);
+    const batchCounts = {};
+    dexieUsers.forEach(u => {
+      if (u.batch) {
+        batchCounts[u.batch] = (batchCounts[u.batch] || 0) + 1;
+      }
+    });
+
+    const studentBatchesWithCount = students.map(b => ({ name: b, count: batchCounts[b] || 0 }));
+    const otherBatchesWithCount = others.map(b => ({ name: b, count: batchCounts[b] || 0 }));
+    
+    setStudentBatches(studentBatchesWithCount);
+    setOtherBatches(otherBatchesWithCount);
+    setAllBatches([...studentBatchesWithCount, ...otherBatchesWithCount]);
+    if (dexieBatches.length > 0) {
+      setLoading(false);
+    }
+  }, [dexieBatches, dexieUsers, selectedCampus, userRole, userCampus]);
 
   useEffect(() => {
     filterBatches();
@@ -74,10 +110,11 @@ const Batches = () => {
   const fetchCampuses = async () => {
     try {
       const token = localStorage.getItem('token');
-      const data = await getCampusAndDepartment(token);
-      setCampuses(data.campus || []);
-      if (data.campus && data.campus.length > 0) {
-        setSelectedCampus(data.campus[0]);
+      // Cache-first: served from IndexedDB if already cached (mirrors Android getCampuses)
+      const campusList = await getCampusesFromCache(token);
+      setCampuses(campusList);
+      if (campusList.length > 0) {
+        setSelectedCampus(campusList[0]);
       }
     } catch (error) {
       console.error('Error fetching campuses:', error);
@@ -89,29 +126,9 @@ const Batches = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const data = await getAllBatches({ token, campus });
-      
-      const students = data?.student || [];
-      const others = data?.member || [];
-      
-      const usersData = await getMembersForUserManagement(token);
-      setAllUsers(usersData || []);
-      const batchCounts = {};
-      (usersData || []).forEach(u => {
-        if (u.batch) {
-          batchCounts[u.batch] = (batchCounts[u.batch] || 0) + 1;
-        }
-      });
-
-      const studentBatchesWithCount = students.map(b => ({ name: b, count: batchCounts[b] || 0 }));
-      const otherBatchesWithCount = others.map(b => ({ name: b, count: batchCounts[b] || 0 }));
-      
-      setStudentBatches(studentBatchesWithCount);
-      setOtherBatches(otherBatchesWithCount);
-      setAllBatches([...studentBatchesWithCount, ...otherBatchesWithCount]);
+      await triggerBatchSync(token);
     } catch (error) {
-      console.error('Error fetching batches:', error);
-      setAllBatches([]);
+      console.error('Error triggering batch sync:', error);
     } finally {
       setLoading(false);
     }
@@ -137,8 +154,11 @@ const Batches = () => {
       try {
         const token = localStorage.getItem('token');
         await removeBatch({ token, batchName, campus });
+        // Immediately remove from IndexedDB so the UI updates reactively
+        const idStudent = `student-${batchName}-${campus}`;
+        const idMember = `member-${batchName}-${campus}`;
+        await db.batches.bulkDelete([idStudent, idMember]);
         alert('Batch removed successfully');
-        fetchBatches(campus);
       } catch (error) {
         console.error('Error removing batch:', error);
         alert('Failed to remove batch. ' + error.message);
@@ -196,8 +216,9 @@ const Batches = () => {
       });
       alert('Batch edited successfully');
       setIsEditModalOpen(false);
+      // Re-sync from server to reflect updated level data
       const campus = userRole === 'admin' ? selectedCampus : userCampus;
-      fetchBatches(campus);
+      if (campus) triggerBatchSync(token, campus);
     } catch (error) {
       console.error('Error saving batch:', error);
       alert('Failed to save batch. ' + error.message);
@@ -223,15 +244,15 @@ const Batches = () => {
     // Fetch options for dropdowns
     try {
       const token = localStorage.getItem('token');
-      const campusDeptData = await getCampusAndDepartment(token);
-      const fetchedCampuses = campusDeptData.campus || ["SISTec-Gandhi Nagar", "SISTec-Ratibad"];
-      const fetchedDepts = campusDeptData.department || [
+      const { campuses: fetchedCampuses, departments: fetchedDepts } =
+        await fetchCampusesAndDepartments(token, 'userManagement');
+      
+      setEditCampuses(fetchedCampuses.length > 0 ? fetchedCampuses : ["SISTec-Gandhi Nagar", "SISTec-Ratibad"]);
+      setEditDepartments(fetchedDepts.length > 0 ? fetchedDepts : [
           "COMPUTER SCIENCE", "INFORMATION TECHNOLOGY", "MECHANICAL ENGINEERING",
           "CIVIL ENGINEERING", "ELECTRICAL ENGINEERING", "ELECTRONICS & COMMUNICATION",
           "MBA", "ADMINISTRATION"
-      ];
-      setEditCampuses(fetchedCampuses);
-      setEditDepartments(fetchedDepts);
+      ]);
 
       if (user.department) {
         const rolesData = await getRoleBasedOnDepartment({ department: user.department, token });
@@ -417,39 +438,40 @@ const Batches = () => {
         <button className="btn btn-primary" onClick={handleOpenAddModal}>+ Add New Batch</button>
       </div>
 
-      <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {userRole === 'admin' && (
-          <select 
-            className="input-control" 
-            style={{ minWidth: '200px', marginBottom: 0 }}
-            value={selectedCampus}
-            onChange={(e) => setSelectedCampus(e.target.value)}
-          >
-            <option value="">Select Campus</option>
-            {campuses.map((c, i) => <option key={i} value={c}>{c}</option>)}
-          </select>
-        )}
-        
-        <input 
-          type="text" 
-          placeholder="Search batch..." 
-          className="input-control" 
-          style={{ flex: 1, minWidth: '200px', marginBottom: 0 }} 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {['All', 'Student', 'Other'].map(tab => (
-            <button 
-              key={tab}
-              className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-outline'}`}
-              style={{ padding: '0.5rem 1rem' }}
-              onClick={() => setActiveTab(tab)}
+      {/* ── Filter bar ── */}
+      <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {userRole === 'admin' && (
+            <select
+              className="input-control"
+              style={{ flex: '1 1 180px', minWidth: '140px', marginBottom: 0 }}
+              value={selectedCampus}
+              onChange={(e) => setSelectedCampus(e.target.value)}
             >
-              {tab} Batches
-            </button>
-          ))}
+              <option value="">Select Campus</option>
+              {campuses.map((c, i) => <option key={i} value={c}>{c}</option>)}
+            </select>
+          )}
+          <input
+            type="text"
+            placeholder="Search batch..."
+            className="input-control"
+            style={{ flex: '2 1 180px', minWidth: '140px', marginBottom: 0 }}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {['All', 'Student', 'Other'].map(tab => (
+              <button
+                key={tab}
+                className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-outline'}`}
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -462,35 +484,68 @@ const Batches = () => {
           <h3 style={{ color: 'var(--text-secondary)' }}>No batches found</h3>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+        <div style={{
+          display: 'grid',
+          gap: '0.85rem',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))'
+        }}>
           {batches.map((batch, index) => (
-            <div key={index} className="glass-panel responsive-card" style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div>
-                  <h4 style={{ margin: '0 0 0.5rem', color: 'var(--text-primary)', fontSize: '1.1rem' }}>{batch.name}</h4>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--surface-hover)', padding: '0.2rem 0.6rem', borderRadius: '12px' }}>
-                    {batch.count} Members
-                  </span>
-                </div>
+            <div
+              key={index}
+              className="glass-panel"
+              style={{
+                padding: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+              }}
+            >
+              {/* Batch name + member count */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <h4 style={{
+                  margin: 0,
+                  color: 'var(--text-primary)',
+                  fontSize: '0.88rem',
+                  wordBreak: 'break-word',
+                  lineHeight: '1.4',
+                  flex: 1
+                }}>{batch.name}</h4>
+                <span style={{
+                  flexShrink: 0,
+                  fontSize: '0.75rem',
+                  color: 'var(--text-secondary)',
+                  background: 'var(--surface-hover)',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '10px',
+                  whiteSpace: 'nowrap'
+                }}>
+                  👥 {batch.count}
+                </span>
               </div>
-              <div className="responsive-card-actions" style={{ marginTop: '0' }}>
-                <button 
-                  className="btn btn-outline" 
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+
+              {/* Action buttons — equal-width grid, wraps into rows if card is narrow */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))',
+                gap: '0.4rem'
+              }}>
+                <button
+                  className="btn btn-outline"
+                  style={{ padding: '0.35rem 0.4rem', fontSize: '0.78rem', textAlign: 'center' }}
                   onClick={() => handleViewMembers(batch.name)}
                 >
                   Members
                 </button>
-                <button 
-                  className="btn btn-outline" 
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+                <button
+                  className="btn btn-outline"
+                  style={{ padding: '0.35rem 0.4rem', fontSize: '0.78rem', textAlign: 'center' }}
                   onClick={() => handleEditClick(batch.name)}
                 >
                   Edit
                 </button>
-                <button 
-                  className="btn btn-danger" 
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', flex: 1 }}
+                <button
+                  className="btn btn-danger"
+                  style={{ padding: '0.35rem 0.4rem', fontSize: '0.78rem', textAlign: 'center' }}
                   onClick={() => handleRemoveBatch(batch.name)}
                 >
                   Remove
@@ -499,6 +554,7 @@ const Batches = () => {
             </div>
           ))}
         </div>
+
       )}
       </div>
 

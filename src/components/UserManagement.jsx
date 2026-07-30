@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   getMembersForUserManagement, removeUser,
-  getCampusAndDepartment, getRoleBasedOnDepartment, getBatchesBasedOnDepartment,
+  getRoleBasedOnDepartment, getBatchesBasedOnDepartment,
   addNewUser, editUser, uploadExcelUsers
 } from '../services/api';
+import { useUsers, triggerUserSync } from '../viewmodels/UserViewModel';
+import { db } from '../database/db';
+import { fetchCampusesAndDepartments } from '../viewmodels/CampusDepartmentViewModel';
 
 const UserManagement = ({ getImageUrl, onImageClick }) => {
   const defaultGetImageUrl = (img) => {
@@ -12,12 +15,16 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
   };
   const getUrl = getImageUrl || defaultGetImageUrl;
 
-  const CACHE_KEY = 'userManagement_cachedUsers';
-
-  const [users, setUsers] = useState([]);
+  const dexieUsers = useUsers() || [];
+  // Instead of managing our own state for users, we derive it from IndexedDB.
+  // We keep `users` as a let/var or just use dexieUsers directly, but let's just 
+  // assign it so the rest of the component still works:
+  const users = dexieUsers;
   const [loading, setLoading] = useState(true);
   const [formMode, setFormMode] = useState(null); // null, 'ADD', 'EDIT'
   const fileInputRef = useRef(null);
+  // Track when we're restoring edit-form state so we DON'T reset the role
+  const skipRoleResetRef = useRef(false);
 
   // Selection
   const [selectedEmails, setSelectedEmails] = useState([]);
@@ -41,6 +48,8 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
   const [selectedBatch, setSelectedBatch] = useState('');
 
   const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+  const userEmail = (localStorage.getItem('userEmail') || '').toLowerCase();
+  const userDept = (localStorage.getItem('userDepartment') || '').toUpperCase();
 
   // Helper function to return fallback roles based on department and requester role
   const getFallbackRoles = (dept) => {
@@ -83,13 +92,27 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
   };
 
   useEffect(() => {
-    if (!formMode) fetchUsers();
-    else fetchCampusAndDept();
+    if (!formMode) {
+      fetchUsers();
+    } else {
+      fetchCampusAndDept();
+    }
   }, [formMode]);
 
   useEffect(() => {
-    console.log('selectedDept changed to:', selectedDept);
-    setSelectedRole(''); // Reset selectedRole when department changes
+    // If dexieUsers has data, we can stop loading.
+    if (dexieUsers && dexieUsers.length > 0) {
+      setLoading(false);
+    }
+  }, [dexieUsers]);
+
+  useEffect(() => {
+    // When dept changes, reset role UNLESS we are restoring edit-form values
+    if (skipRoleResetRef.current) {
+      skipRoleResetRef.current = false; // consume the flag
+    } else {
+      setSelectedRole('');
+    }
     if (selectedDept) fetchRoles();
     else setRoles([]);
   }, [selectedDept]);
@@ -121,102 +144,73 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
   const fetchUsers = async (forceSync = false) => {
     setLoading(true);
     try {
-      if (!forceSync) {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          setUsers(JSON.parse(cached));
-          setLoading(false);
-          return;
-        }
-      }
       const token = localStorage.getItem('token');
-      const data = await getMembersForUserManagement(token);
-      const fetchedUsers = data || [];
-      setUsers(fetchedUsers);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(fetchedUsers));
+      // trigger sync in background
+      await triggerUserSync(token);
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
+      // If we don't have users in dexie yet, let the hook resolve it, 
+      // but we turn off loading after sync completes or fails.
       setLoading(false);
     }
   };
 
   const fetchCampusAndDept = async () => {
-    console.log('fetchCampusAndDept called. userRole:', userRole);
     try {
       const token = localStorage.getItem('token');
-      const data = await getCampusAndDepartment(token);
-      console.log('getCampusAndDepartment API response:', data);
-      
-      const campusList = data.campus || [];
-      const deptList = data.department || [];
       const userDept = localStorage.getItem('userDepartment') || '';
 
+      // Cache-first: served from IndexedDB if already cached (mirrors Android getCampuses/getDepartments)
+      const { campuses: campusList, departments: deptList } =
+        await fetchCampusesAndDepartments(token, 'userManagement');
+
       if (userRole === 'admin') {
-        setCampuses(campusList.length > 0 ? campusList : ["SISTec-Gandhi Nagar", "SISTec-Ratibad"]);
+        setCampuses(campusList.length > 0 ? campusList : ['SISTec-Gandhi Nagar', 'SISTec-Ratibad']);
         setDepartments(deptList.length > 0 ? deptList : [
-          "COMPUTER SCIENCE",
-          "INFORMATION TECHNOLOGY",
-          "MECHANICAL ENGINEERING",
-          "CIVIL ENGINEERING",
-          "ELECTRICAL ENGINEERING",
-          "ELECTRONICS & COMMUNICATION",
-          "MBA",
-          "ADMINISTRATION"
+          'COMPUTER SCIENCE', 'INFORMATION TECHNOLOGY', 'MECHANICAL ENGINEERING',
+          'CIVIL ENGINEERING', 'ELECTRICAL ENGINEERING', 'ELECTRONICS & COMMUNICATION',
+          'MBA', 'ADMINISTRATION'
         ]);
       } else if (userRole === 'principal') {
         setCampuses([]);
         setDepartments(deptList.length > 0 ? deptList : [
-          "COMPUTER SCIENCE",
-          "INFORMATION TECHNOLOGY",
-          "MECHANICAL ENGINEERING",
-          "CIVIL ENGINEERING",
-          "ELECTRICAL ENGINEERING",
-          "ELECTRONICS & COMMUNICATION",
-          "MBA",
-          "ADMINISTRATION"
+          'COMPUTER SCIENCE', 'INFORMATION TECHNOLOGY', 'MECHANICAL ENGINEERING',
+          'CIVIL ENGINEERING', 'ELECTRICAL ENGINEERING', 'ELECTRONICS & COMMUNICATION',
+          'MBA', 'ADMINISTRATION'
         ]);
       } else {
-        // HOD or Faculty
+        // HOD or Faculty — only their own department
         setCampuses([]);
         if (deptList.length > 0) {
           setDepartments(deptList);
         } else if (userDept) {
           setDepartments([userDept]);
         } else {
-          setDepartments(["COMPUTER SCIENCE"]);
+          setDepartments(['COMPUTER SCIENCE']);
         }
       }
     } catch (error) {
       console.error('Error fetching campus/dept:', error);
+      // Fallback: use localStorage data if fetch fails
       const userDept = localStorage.getItem('userDepartment') || '';
       if (userRole === 'admin') {
-        setCampuses(["SISTec-Gandhi Nagar", "SISTec-Ratibad"]);
+        setCampuses(['SISTec-Gandhi Nagar', 'SISTec-Ratibad']);
         setDepartments([
-          "COMPUTER SCIENCE",
-          "INFORMATION TECHNOLOGY",
-          "MECHANICAL ENGINEERING",
-          "CIVIL ENGINEERING",
-          "ELECTRICAL ENGINEERING",
-          "ELECTRONICS & COMMUNICATION",
-          "MBA",
-          "ADMINISTRATION"
+          'COMPUTER SCIENCE', 'INFORMATION TECHNOLOGY', 'MECHANICAL ENGINEERING',
+          'CIVIL ENGINEERING', 'ELECTRICAL ENGINEERING', 'ELECTRONICS & COMMUNICATION',
+          'MBA', 'ADMINISTRATION'
         ]);
       } else if (userRole === 'principal') {
         setCampuses([]);
         setDepartments([
-          "COMPUTER SCIENCE",
-          "INFORMATION TECHNOLOGY",
-          "MECHANICAL ENGINEERING",
-          "CIVIL ENGINEERING",
-          "ELECTRICAL ENGINEERING",
-          "ELECTRONICS & COMMUNICATION",
-          "MBA",
-          "ADMINISTRATION"
+          'COMPUTER SCIENCE', 'INFORMATION TECHNOLOGY', 'MECHANICAL ENGINEERING',
+          'CIVIL ENGINEERING', 'ELECTRICAL ENGINEERING', 'ELECTRONICS & COMMUNICATION',
+          'MBA', 'ADMINISTRATION'
         ]);
       } else {
         setCampuses([]);
-        setDepartments(userDept ? [userDept] : ["COMPUTER SCIENCE"]);
+        setDepartments(userDept ? [userDept] : ['COMPUTER SCIENCE']);
       }
     }
   };
@@ -271,9 +265,8 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
       const token = localStorage.getItem('token');
       await removeUser({ token, removeEmail: email });
       
-      const updatedUsers = users.filter(user => user.email !== email);
-      setUsers(updatedUsers);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedUsers));
+      // Update IndexedDB directly to reflect changes immediately
+      await db.users.where('email').equals(email).delete();
       setSelectedEmails(prev => prev.filter(e => e !== email));
     } catch (error) {
       console.error('Error removing user:', error);
@@ -285,11 +278,10 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
     if (!window.confirm(`Are you sure you want to delete ${selectedEmails.length} user(s)?`)) return;
     try {
       const token = localStorage.getItem('token');
-      await removeUser({ token, removeEmails: selectedEmails });
+      await removeUser({ token, removeEmail: selectedEmails });
       
-      const updatedUsers = users.filter(user => !selectedEmails.includes(user.email));
-      setUsers(updatedUsers);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedUsers));
+      // Update IndexedDB directly to reflect changes immediately
+      await db.users.where('email').anyOf(selectedEmails).delete();
       setSelectedEmails([]);
     } catch (error) {
       console.error('Error removing users:', error);
@@ -317,6 +309,8 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
       previousEmail: user.email || ''
     });
     setSelectedCampus(user.campus || '');
+    // Set the skip flag so the dept-change effect won't clear role
+    skipRoleResetRef.current = true;
     setSelectedDept(user.department || '');
     setSelectedRole(user.role || '');
     setSelectedBatch(user.batch || '');
@@ -353,21 +347,18 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
 
       if (userRole === 'admin') payload.campus = selectedCampus;
 
-      let updatedUsers = [...users];
-
       if (formMode === 'ADD') {
-        await addNewUser(payload);
-        alert('User added successfully');
-        updatedUsers.push({ ...payload });
-      } else if (formMode === 'EDIT') {
-        await editUser(payload);
-        alert('User updated successfully');
-        const targetEmail = payload.previousEmail || payload.email;
-        updatedUsers = updatedUsers.map(u => u.email === targetEmail ? { ...u, ...payload, previousEmail: undefined } : u);
+        const res = await addNewUser(payload);
+        alert(res.message || 'User added successfully');
+        // Trigger a background sync to fetch the new user completely 
+        // (including any fields generated by backend)
+        await triggerUserSync(token);
+      } else {
+        const res = await editUser(payload);
+        alert(res.message || 'User updated successfully');
+        // Trigger a background sync
+        await triggerUserSync(token);
       }
-
-      setUsers(updatedUsers);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedUsers));
       setFormMode(null);
     } catch (error) {
       alert(`Error ${formMode === 'ADD' ? 'adding' : 'updating'} user`);
@@ -380,9 +371,10 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
     if (!file) return;
     try {
       const token = localStorage.getItem('token');
-      await uploadExcelUsers(file, token);
-      alert('Excel uploaded successfully');
-      fetchUsers(true);
+      const res = await uploadExcelUsers(file, token);
+      alert(res.message || 'Users uploaded successfully');
+      // Sync the new data from server
+      await triggerUserSync(token);
     } catch (error) {
       alert('Error uploading excel');
     }
@@ -402,12 +394,28 @@ const UserManagement = ({ getImageUrl, onImageClick }) => {
 
   const getFilteredUsers = () => {
     return users.filter(user => {
+      // 1. Exclude the currently logged in user
+      if ((user.email || '').toLowerCase() === userEmail) {
+        return false;
+      }
+
+      // 2. Apply Role-based constraints
+      const uRole = user.role?.toLowerCase() || '';
+      const uDept = user.department?.toUpperCase() || '';
+      
+      if (userRole === 'faculty') {
+        if (uDept !== userDept || uRole !== 'student') return false;
+      } else if (userRole === 'hod') {
+        if (uDept !== userDept || !['faculty', 'student', 'reception', 'security guard'].includes(uRole)) return false;
+      }
+      
+      // 3. Search query
       if (searchQuery && !user.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
       }
-      if (roleFilter === 'All') return true;
 
-      const uRole = user.role?.toLowerCase() || '';
+      // 4. Tab filtering
+      if (roleFilter === 'All') return true;
       if (roleFilter === 'Student') return uRole === 'student';
       if (roleFilter === 'Management') return ['principal', 'hod', 'faculty', 'admin'].includes(uRole);
       if (roleFilter === 'Security') return uRole === 'security guard' || uRole === 'security';

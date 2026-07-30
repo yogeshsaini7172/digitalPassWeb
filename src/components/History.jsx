@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { getVisitorListHistory, getGatePassListHistory } from '../services/api';
+import {
+  useHistoricalGatePasses, useHistoricalInterInstitutionalGatePasses, useHistoricalVisitors,
+  useGatePasses, useInterInstitutionalGatePasses, useVisitors,
+  triggerGatePassSync, triggerInterInstitutionalGatePassSync, triggerVisitorSync
+} from '../viewmodels/PassViewModel';
+import PremiumProgressIndicator from './PremiumProgressIndicator';
+import PremiumInterProgressIndicator from './PremiumInterProgressIndicator';
 
 const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
   const [activeTab, setActiveTab] = useState('GatePass'); // 'GatePass' or 'Visitors'
-  const [historyData, setHistoryData] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
+  const [passTypeFilter, setPassTypeFilter] = useState('All Types');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -25,38 +30,35 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
   };
   const getImageUrl = propGetImageUrl || localGetImageUrl;
 
+  // Trigger background sync so history is up-to-date (mirrors Android onResume)
   useEffect(() => {
-    fetchHistory();
-  }, [activeTab]);
+    const token = localStorage.getItem('token');
+    triggerGatePassSync(token);
+    triggerInterInstitutionalGatePassSync(token);
+    triggerVisitorSync(token);
+  }, []);
 
-  const fetchHistory = async (overrideFromDate, overrideToDate) => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const payload = {
-        token,
-        fromDate: overrideFromDate !== undefined ? overrideFromDate : fromDate,
-        toDate: overrideToDate !== undefined ? overrideToDate : toDate
-      };
-      let data = [];
-      if (activeTab === 'GatePass') {
-        data = await getGatePassListHistory(payload);
-      } else {
-        data = await getVisitorListHistory(payload);
-      }
-      setHistoryData(data || []);
-    } catch (error) {
-      console.error(`Error fetching ${activeTab} history:`, error);
-    } finally {
-      setLoading(false);
-    }
+  // Historical hooks — past or completed passes (mirrors Android DAO queries)
+  const historicalGatePasses              = useHistoricalGatePasses();
+  const historicalInterInstitutional      = useHistoricalInterInstitutionalGatePasses();
+  const historicalVisitors                = useHistoricalVisitors();
+
+  // Raw hooks — used when the user explicitly selects a date range
+  // (they may want to see today's active passes in the range too)
+  const allGatePasses              = useGatePasses();
+  const allInterInstitutional      = useInterInstitutionalGatePasses();
+  const allVisitors                = useVisitors();
+
+  const fetchHistory = (overrideFromDate, overrideToDate) => {
+    // Just force a re-render so derived state uses the new dates.
+    // The actual filtering happens in the render cycle.
   };
 
   const handleApply = () => {
     if (fromDate && toDate && fromDate > toDate) {
       return alert("From Date should be less than or equal to To Date");
     }
-    fetchHistory();
+    // Forces re-eval of filteredData
   };
 
   const handleClear = () => {
@@ -64,7 +66,7 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
     setToDate('');
     setSearchQuery('');
     setStatusFilter('All Status');
-    fetchHistory('', '');
+    setPassTypeFilter('All Types');
   };
 
   const handleDownloadCSV = () => {
@@ -90,11 +92,45 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
     document.body.removeChild(link);
   };
 
-  const filteredData = historyData.filter(item => {
-    const matchesName = !searchQuery || (item.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All Status' || (item.status || '').toLowerCase() === statusFilter.toLowerCase();
-    return matchesName && matchesStatus;
-  });
+  const filteredData = React.useMemo(() => {
+    // If user set a date range, use ALL records so they can see any pass in that window
+    const hasDateFilter = fromDate || toDate;
+
+    let sourceData = [];
+    if (activeTab === 'GatePass') {
+      const gatePasses = hasDateFilter ? allGatePasses : historicalGatePasses;
+      const inter      = hasDateFilter ? allInterInstitutional : historicalInterInstitutional;
+      sourceData = [...gatePasses, ...inter];
+    } else {
+      sourceData = hasDateFilter ? allVisitors : historicalVisitors;
+    }
+
+    return sourceData.filter(item => {
+      const matchesName   = !searchQuery || (item.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'All Status' || (item.status || '').toLowerCase() === statusFilter.toLowerCase();
+      
+      let matchesType = true;
+      if (activeTab === 'GatePass' && passTypeFilter !== 'All Types') {
+        const isInter = !!item.destinationCampus;
+        if (passTypeFilter === 'Regular' && isInter) matchesType = false;
+        if (passTypeFilter === 'Inter-Institutional' && !isInter) matchesType = false;
+      }
+
+      let matchesDate = true;
+      const dateField = activeTab === 'GatePass' ? item.applyDate : (item.entryDate || item.meetDate);
+      if (dateField && hasDateFilter) {
+        const itemDateStr = dateField.split(' ')[0];
+        if (fromDate && itemDateStr < fromDate) matchesDate = false;
+        if (toDate   && itemDateStr > toDate)   matchesDate = false;
+      }
+      return matchesName && matchesStatus && matchesType && matchesDate;
+    });
+  }, [
+    activeTab,
+    historicalGatePasses, historicalInterInstitutional, historicalVisitors,
+    allGatePasses, allInterInstitutional, allVisitors,
+    searchQuery, statusFilter, passTypeFilter, fromDate, toDate
+  ]);
 
   return (
     <>
@@ -129,6 +165,19 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           
+          {activeTab === 'GatePass' && (
+            <select 
+              className="input-control" 
+              style={{ minWidth: '150px', marginBottom: 0 }}
+              value={passTypeFilter}
+              onChange={(e) => setPassTypeFilter(e.target.value)}
+            >
+              <option value="All Types">All Types</option>
+              <option value="Regular">Regular</option>
+              <option value="Inter-Institutional">Inter-Institutional</option>
+            </select>
+          )}
+
           <select 
             className="input-control" 
             style={{ minWidth: '150px', marginBottom: 0 }}
@@ -164,11 +213,7 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
           <button className="btn btn-outline" onClick={handleClear}>Clear</button>
         </div>
 
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-            <div className="spinner" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }}></div>
-          </div>
-        ) : filteredData.length === 0 ? (
+        {filteredData.length === 0 ? (
           <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center' }}>
             <h3 style={{ color: 'var(--text-secondary)' }}>No history records found</h3>
           </div>
@@ -189,6 +234,14 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
                 <div>
                   <h4 style={{ marginBottom: '0.25rem' }}>{item.name || 'Unknown User'}</h4>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                    {activeTab === 'GatePass' && (
+                      <span style={{ 
+                        fontWeight: 600, 
+                        color: item.destinationCampus ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                      }}>
+                        {item.destinationCampus ? 'Inter-Institutional' : 'Regular'} | 
+                      </span>
+                    )}
                     Date: {item.applyDate || item.entryDate || item.date || 'N/A'} | Status: <span style={{ color: item.status === 'Approved' || item.status === 'approved' ? 'var(--success)' : item.status === 'Rejected' || item.status === 'rejected' ? 'var(--danger)' : 'var(--warning)' }}>{item.status || 'Past Record'}</span>
                   </p>
                   {item.reason && <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>Reason: {item.reason}</p>}
@@ -294,6 +347,15 @@ const History = ({ getImageUrl: propGetImageUrl, onImageClick }) => {
               </div>
 
             </div>
+
+            {/* ── Progress Indicator ── */}
+            {activeTab === 'GatePass' && selectedItem && (
+              selectedItem.destinationCampus ? (
+                <PremiumInterProgressIndicator pass={selectedItem} />
+              ) : (
+                <PremiumProgressIndicator pass={selectedItem} />
+              )
+            )}
 
             {/* Authority Remark */}
             {selectedItem.tgRemark && (

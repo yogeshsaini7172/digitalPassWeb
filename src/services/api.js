@@ -56,6 +56,46 @@ export const rejectGatePass = async (hashToRejectGatePass) => {
   return response.text();
 };
 
+export const approveInterInstitutionalGatePassByMember = async (hashData) => {
+  const response = await fetch(`${BASE_URL}/approve-interInstitutional-gate-pass-by-member`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(hashData),
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to approve inter-institutional gate pass'));
+  return response.text();
+};
+
+export const rejectInterInstitutionalGatePass = async (hashData) => {
+  const response = await fetch(`${BASE_URL}/reject-interInstitutional-gate-pass`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(hashData),
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to reject inter-institutional gate pass'));
+  return response.text();
+};
+
+export const exitInterInstitutionalGatePass = async (hashData) => {
+  const response = await fetch(`${BASE_URL}/exit-interInstitutional-gate-pass`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(hashData),
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to mark inter-institutional gate pass as exited/entered'));
+  return response.text();
+};
+
+export const activateInterInstitutionalGatePass = async (data) => {
+  const response = await fetch(`${BASE_URL}/activate-interInstitutional-gate-pass`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response, 'Failed to activate gate pass'));
+  return response.text();
+};
+
 export const editGatePass = async (data) => {
   const response = await fetch(`${BASE_URL}/edit-gate-pass`, {
     method: 'POST',
@@ -66,13 +106,27 @@ export const editGatePass = async (data) => {
   return response.text();
 };
 
+export const editGatePassBySelfUser = async (data) => {
+  const response = await fetch(`${BASE_URL}/edit-gate-pass-by-self-user`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to edit gate pass'));
+  }
+  return response.text();
+};
+
 export const removeGatePassBySelfUser = async (data) => {
   const response = await fetch(`${BASE_URL}/remove-gate-pass-by-self-user`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to remove gate pass');
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, 'Failed to remove gate pass'));
+  }
   return response.text();
 };
 
@@ -97,11 +151,11 @@ export const getRecentVisitorList = async (token) => {
 };
 
 // USER MANAGEMENT
-export const getMembersForUserManagement = async (token) => {
+export const getMembersForUserManagement = async (token, lastSyncTime = 0, offset = 0, limit = 500) => {
   const response = await fetch(`${BASE_URL}/get-members-for-user-management`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(token),
+    body: JSON.stringify({ token, lastSyncTime, offset, limit }),
   });
   if (!response.ok) throw new Error('Failed to fetch users');
   return response.json();
@@ -546,4 +600,64 @@ export const logoutUser = async (data) => {
     throw new Error(await getErrorMessage(response, `Failed to logout`));
   }
   return response.text();
+};
+
+export const syncGatePasses = async (payload) => {
+    const response = await fetch(`${BASE_URL}/sync-gate-passes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to sync gate passes');
+    return response.json();
+};
+
+export const syncInterInstitutionalGatePasses = async (payload) => {
+    const response = await fetch(`${BASE_URL}/sync-inter-institutional-gate-passes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to sync inter-institutional gate passes');
+    return response.json();
+};
+
+export const syncVisitorPasses = async (payload) => {
+    const response = await fetch(`${BASE_URL}/sync-visitor-passes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to sync visitors');
+    return response.json();
+};
+
+export const getRecentUpdatedGatePass = async (payload) => {
+    const response = await fetch(`${BASE_URL}/get-recent-updated-gate-pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to fetch gate pass');
+    return response.json();
+};
+
+export const getRecentUpdatedInterInstitutionalGatePass = async (payload) => {
+    const response = await fetch(`${BASE_URL}/get-recent-updated-gate-pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to fetch inter institutional gate pass');
+    return response.json();
+};
+
+export const getRecentUpdatedVisitor = async (payload) => {
+    const response = await fetch(`${BASE_URL}/get-recent-updated-visitor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to fetch visitor');
+    return response.json();
 };
