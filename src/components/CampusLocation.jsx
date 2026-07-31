@@ -57,7 +57,7 @@ const CampusLocation = () => {
 
     if (!mapInstanceRef.current && mapRef.current) {
       mapInstanceRef.current = window.L.map(mapRef.current).setView([latitude, longitude], 15);
-      
+
       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(mapInstanceRef.current);
@@ -133,7 +133,7 @@ const CampusLocation = () => {
     } else {
       markerRef.current = window.L.marker([numLat, numLng], { draggable: true })
         .addTo(mapInstanceRef.current);
-      
+
       markerRef.current.on('dragend', () => {
         const pos = markerRef.current.getLatLng();
         updateMarkerAndCircle(pos.lat, pos.lng);
@@ -174,16 +174,25 @@ const CampusLocation = () => {
 
   const detectCurrentLocation = () => {
     if (navigator.geolocation) {
+      const handleSuccess = (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        updateMarkerAndCircle(lat, lng, radius);
+      };
+
+      const handleError = (err) => {
+        console.warn("High accuracy failed, trying low accuracy:", err);
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (fallbackErr) => console.warn("Could not determine current position:", fallbackErr),
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        );
+      };
+
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          updateMarkerAndCircle(lat, lng, radius);
-        },
-        (err) => {
-          console.warn("Could not determine current position:", err);
-        },
-        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        handleSuccess,
+        handleError,
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     }
   };
@@ -215,7 +224,7 @@ const CampusLocation = () => {
         await saveCampusLocation(payload);
         setSuccessMsg('Campus location updated successfully.');
       }
-      
+
       // Reload list
       const freshData = await getCampusLocation(token);
       setCampuses(freshData || []);
@@ -244,7 +253,7 @@ const CampusLocation = () => {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
-          
+
           {/* Settings form */}
           <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <h4 style={{ color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
@@ -265,9 +274,9 @@ const CampusLocation = () => {
 
             <div>
               <label className="input-label">Select Campus to Configure</label>
-              <select 
-                className="input-control" 
-                value={selectedCampusName} 
+              <select
+                className="input-control"
+                value={selectedCampusName}
                 onChange={handleCampusSelectChange}
               >
                 {campuses.map(c => (
@@ -280,8 +289,8 @@ const CampusLocation = () => {
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label className="input-label">Campus Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   className="input-control"
                   placeholder="e.g. SISTec-Ratibad"
                   value={campusName}
@@ -294,8 +303,8 @@ const CampusLocation = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label className="input-label">Latitude</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.000001"
                     className="input-control"
                     value={latitude}
@@ -305,8 +314,8 @@ const CampusLocation = () => {
                 </div>
                 <div>
                   <label className="input-label">Longitude</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.000001"
                     className="input-control"
                     value={longitude}
@@ -321,17 +330,17 @@ const CampusLocation = () => {
                   <label className="input-label">Geofence Radius (meters)</label>
                   <span style={{ fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 600 }}>{radius} m</span>
                 </div>
-                <input 
-                  type="range" 
-                  min="50" 
-                  max="1500" 
+                <input
+                  type="range"
+                  min="50"
+                  max="1500"
                   step="10"
                   style={{ width: '100%', accentColor: 'var(--accent-primary)', marginTop: '0.5rem', marginBottom: '0.5rem' }}
                   value={radius}
                   onChange={(e) => handleFieldChange('radius', parseInt(e.target.value))}
                 />
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   className="input-control"
                   value={radius}
                   onChange={(e) => handleFieldChange('radius', parseInt(e.target.value) || 0)}
@@ -341,17 +350,17 @@ const CampusLocation = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button 
-                  type="button" 
-                  className="btn btn-outline" 
+                <button
+                  type="button"
+                  className="btn btn-outline"
                   style={{ flex: 1 }}
                   onClick={detectCurrentLocation}
                 >
                   📍 Find Me
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary" 
+                <button
+                  type="submit"
+                  className="btn btn-primary"
                   style={{ flex: 1.5 }}
                   disabled={saving}
                 >
@@ -367,17 +376,17 @@ const CampusLocation = () => {
               <span className="input-label">Interactive Boundary Map</span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Click map or drag marker to adjust center</span>
             </div>
-            
-            <div 
-              ref={mapRef} 
-              style={{ 
-                height: '450px', 
-                width: '100%', 
-                borderRadius: '16px', 
+
+            <div
+              ref={mapRef}
+              style={{
+                height: '450px',
+                width: '100%',
+                borderRadius: '16px',
                 border: '1px solid var(--glass-border)',
                 boxShadow: 'var(--glass-shadow)',
                 zIndex: 1
-              }} 
+              }}
             />
           </div>
 

@@ -44,8 +44,10 @@ function App() {
     const token = localStorage.getItem('token');
     if (token && logoutType) {
       try {
-        const { logoutUser } = await import('./services/api');
-        await logoutUser({ token, logoutType });
+        const api = await import('./services/api');
+        if (typeof api.logoutUser === 'function') {
+          await api.logoutUser({ token, logoutType });
+        }
       } catch (error) {
         console.error('Logout error:', error);
       }
@@ -53,10 +55,19 @@ function App() {
     // Fully clear storage to match Android app's SharedPreferences.clear()
     localStorage.clear();
     await wipeDatabase();
-    import('./services/socket').then(({ disconnectSocket }) => {
-      disconnectSocket();
-    });
-    setIsAuthenticated(false);
+    
+    try {
+      const { disconnectSocket } = await import('./services/socket');
+      if (typeof disconnectSocket === 'function') {
+        disconnectSocket();
+      }
+    } catch (e) {
+      // ignore
+    }
+    
+    // Force a full page reload to completely reset all React state and memory,
+    // ensuring a clean switch to the login page without stale data errors.
+    window.location.reload();
   };
 
   return (

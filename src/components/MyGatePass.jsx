@@ -43,29 +43,46 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
 
   const fetchLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser.");
-      setDetectingLocation(false);
+      setTimeout(() => {
+        setLocationError("Geolocation is not supported by your browser.");
+        setDetectingLocation(false);
+      }, 0);
       return;
     }
 
-    setDetectingLocation(true);
-    setLocationError(null);
+    setTimeout(() => {
+      setDetectingLocation(true);
+      setLocationError(null);
+    }, 0);
 
+    const handleSuccess = (position) => {
+      setLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      });
+      setLocationError(null);
+      setDetectingLocation(false);
+    };
+
+    const handleError = (err) => {
+      console.warn("High accuracy geolocation failed:", err);
+      // Fallback to low accuracy for a smoother experience
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        (fallbackErr) => {
+          console.error("Fallback geolocation error:", fallbackErr);
+          setLocationError("Location permission denied or timed out. GPS access is required to verify you are physically inside the campus.");
+          setDetectingLocation(false);
+        },
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      );
+    };
+
+    // First try with High Accuracy and a short timeout
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        });
-        setLocationError(null);
-        setDetectingLocation(false);
-      },
-      (err) => {
-        console.error("Geolocation error:", err);
-        setLocationError("Location permission denied or timed out. GPS access is required to verify you are physically inside the campus.");
-        setDetectingLocation(false);
-      },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      handleSuccess,
+      handleError,
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   }, []);
 
@@ -97,8 +114,8 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
     setError('');
     try {
       const token = localStorage.getItem('token');
-      const payload = { 
-        reason: trimmed, 
+      const payload = {
+        reason: trimmed,
         token,
         latitude: location.latitude,
         longitude: location.longitude
@@ -174,7 +191,7 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
           <div style={{
             display: 'flex', gap: '1rem', alignItems: 'center',
             padding: '1rem', borderRadius: '12px',
-            background: 'var(--surface-hover)', 
+            background: 'var(--surface-hover)',
             border: '1px solid var(--glass-border)',
           }}>
             <span style={{ fontSize: '1.8rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.05))' }}>🪪</span>
@@ -213,9 +230,6 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
               <label className="input-label" style={{ color: 'var(--accent-primary)', marginBottom: 0 }}>
                 Reason for Gate Pass <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                Tip: Ctrl+Enter to submit
-              </span>
             </div>
 
             <textarea
@@ -298,8 +312,8 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
               <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '0.75rem' }}>
                 <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>⚠️</span>
                 <span style={{ fontSize: '0.82rem', lineHeight: 1.4, flex: 1 }}>{locationError}</span>
-                <button 
-                  onClick={fetchLocation} 
+                <button
+                  onClick={fetchLocation}
                   style={{
                     background: 'var(--danger)', color: 'white', border: 'none',
                     padding: '0.3rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem',
@@ -343,8 +357,8 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
               onClick={handleSubmit}
               disabled={submitting || detectingLocation || !!locationError}
               className="btn btn-primary"
-              style={{ 
-                flex: 2, 
+              style={{
+                flex: 2,
                 padding: '0.75rem',
                 opacity: (submitting || detectingLocation || !!locationError) ? 0.6 : 1,
                 cursor: (submitting || detectingLocation || !!locationError) ? 'not-allowed' : 'pointer'
@@ -386,8 +400,8 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl, onImageCli
     setRemoving(true);
     try {
       const token = localStorage.getItem('token');
-      await removeGatePassBySelfUser({ 
-        token, 
+      await removeGatePassBySelfUser({
+        token,
         gatePassId: pass.gatePassId,
         ...(pass.destinationCampus ? { destinationCampus: pass.destinationCampus } : {})
       });
@@ -494,7 +508,7 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl, onImageCli
         <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* ── Dynamic Details Grid (2 columns on desktop) ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-            
+
             {/* Column 1: Profile Card & Reason */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {/* Profile Card */}
@@ -553,8 +567,8 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl, onImageCli
           </div>
 
           {pass.destinationCampus ? (
-            <PremiumInterProgressIndicator 
-              pass={pass} 
+            <PremiumInterProgressIndicator
+              pass={pass}
               onActivateExit={async (p) => {
                 try {
                   const token = localStorage.getItem('token');
@@ -562,10 +576,10 @@ const GatePassDetailModal = ({ pass, onClose, onRemoved, getImageUrl, onImageCli
                     triggerAllPassSync(token);
                   }
                   console.log('Success', 'Pass activated for exiting destination.');
-                } catch(e) {
+                } catch (e) {
                   console.log('Error', 'Failed to sync after activating pass.');
                 }
-              }} 
+              }}
             />
           ) : (
             <PremiumProgressIndicator pass={pass} />
@@ -638,7 +652,7 @@ export default function MyGatePass({ onImageClick }) {
 
   const allPasses = React.useMemo(() => {
     const allPassesMap = new Map();
-    
+
     [...gatePasses, ...interInstitutionalGatePasses].forEach(p => {
       allPassesMap.set(p.gatePassId, p);
     });
@@ -684,11 +698,6 @@ export default function MyGatePass({ onImageClick }) {
     return allPasses.filter(p => isInterInstitutionalView ? !!p.destinationCampus : !p.destinationCampus);
   }, [allPasses, isInterInstitutionalView]);
 
-  useEffect(() => {
-    fetchCampuses();
-    triggerAllPassSync(localStorage.getItem('token'));
-  }, []);
-
   const fetchCampuses = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -699,14 +708,22 @@ export default function MyGatePass({ onImageClick }) {
     }
   };
 
+  useEffect(() => {
+    setTimeout(() => fetchCampuses(), 0);
+    triggerAllPassSync(localStorage.getItem('token'));
+  }, []);
+
   const handleApplySuccess = (newPass) => {
     setShowApplyModal(false);
     showMsg('success', 'Gate pass applied successfully! Awaiting approval.');
     if (newPass) {
-      newPass.applyEmail = currentUserEmail;
-      newPass.campus = userData.campus;
-      newPass.department = userData.department;
-      setLocalAddedPasses(prev => [newPass, ...prev]);
+      const updatedPass = {
+        ...newPass,
+        applyEmail: currentUserEmail,
+        campus: userData.campus,
+        department: userData.department
+      };
+      setLocalAddedPasses(prev => [updatedPass, ...prev]);
     }
   };
 
@@ -732,8 +749,8 @@ export default function MyGatePass({ onImageClick }) {
       <div className="page-content animate-fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h1 style={{ fontSize: '1.4rem', margin: 0 }}>My Gate Passes</h1>
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={() => setShowApplyTypeDialog(true)}
             style={{ padding: '0.6rem 1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
@@ -857,8 +874,8 @@ export default function MyGatePass({ onImageClick }) {
                       flexShrink: 0, fontSize: '1.1rem',
                     }}>
                       {(pass.status || '').toLowerCase() === 'approved' ? '✓' :
-                       (pass.status || '').toLowerCase() === 'rejected' ? '✗' :
-                       (pass.status || '').toLowerCase() === 'approving' ? '⏳' : '🕐'}
+                        (pass.status || '').toLowerCase() === 'rejected' ? '✗' :
+                          (pass.status || '').toLowerCase() === 'approving' ? '⏳' : '🕐'}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
