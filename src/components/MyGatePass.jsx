@@ -65,7 +65,7 @@ const ApplyModal = ({ onClose, onSuccess, isInterInstitutional, allCampuses }) =
         setLocationError("Location permission denied or timed out. GPS access is required to verify you are physically inside the campus.");
         setDetectingLocation(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
     );
   }, []);
 

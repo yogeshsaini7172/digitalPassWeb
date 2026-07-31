@@ -6,6 +6,7 @@ import './App.css';
 import { triggerAllPassSync } from './viewmodels/PassViewModel';
 import { triggerUserSync } from './viewmodels/UserViewModel';
 import { triggerBatchSync } from './viewmodels/BatchViewModel';
+import InstallPrompt from './components/InstallPrompt';
 import { wipeDatabase } from './database/db';
 
 function App() {
@@ -65,6 +66,7 @@ function App() {
       ) : (
         <Dashboard onLogout={handleLogout} />
       )}
+      <InstallPrompt />
     </ThemeProvider>
   );
 }

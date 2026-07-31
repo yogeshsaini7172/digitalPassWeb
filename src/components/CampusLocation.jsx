@@ -182,7 +182,8 @@ const CampusLocation = () => {
         },
         (err) => {
           console.warn("Could not determine current position:", err);
-        }
+        },
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
       );
     }
   };
