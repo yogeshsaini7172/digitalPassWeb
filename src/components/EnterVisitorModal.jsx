@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAllMemberForVisitor, enterVisitor, editVisitor } from '../services/api';
+import { fetchAndUpsertPass } from '../services/socket';
 
 const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl }) => {
   const isEditMode = !!initialData;
@@ -15,7 +16,6 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     phone: initialData?.phone || '',
-    email: initialData?.visitorEmail || '',
     numberOfVisitor: initialData?.numberOfVisitor || '',
     reason: initialData?.reason || ''
   });
@@ -162,7 +162,7 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
 
   const handleSubmit = async () => {
     if (!isEditMode && !imageFile) { showMsg('error', 'Please capture/upload a photo.'); return; }
-    if (!formData.name.trim() || !formData.phone.trim() || !formData.email.trim() || !formData.numberOfVisitor.trim() || !formData.reason.trim()) {
+    if (!formData.name.trim() || !formData.phone.trim() || !formData.numberOfVisitor.trim() || !formData.reason.trim()) {
       showMsg('error', 'Please fill all visitor details.'); return;
     }
     if (!selectedMember) { showMsg('error', 'Please select a member to meet.'); return; }
@@ -173,7 +173,6 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
       const visitorObj = {
         name: formData.name,
         phone: formData.phone,
-        visitorEmail: formData.email,
         numberOfVisitor: formData.numberOfVisitor,
         reason: formData.reason,
         meetDepartment: selectedMember.department,
@@ -182,20 +181,23 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
 
       if (isEditMode) {
         visitorObj.visitorId = initialData.visitorId;
+        visitorObj.token = token; // Backend expects token inside the JSON string for edits
       }
 
       const submitData = new FormData();
       submitData.append('visitor', JSON.stringify(visitorObj));
-      submitData.append('token', token);
+      submitData.append('token', token); // Keep this for enter mode
       if (imageFile) {
         submitData.append('img', imageFile, 'img.jpg');
       }
 
       if (isEditMode) {
         await editVisitor(submitData);
+        await fetchAndUpsertPass('visitor', initialData.visitorId); // Proactively update UI instantly
         showMsg('success', 'Visitor edited successfully!');
       } else {
         await enterVisitor(submitData);
+        // Wait, for new visitor we don't have visitorId easily returned yet unless app.py returns it.
         showMsg('success', 'Visitor entered successfully!');
       }
       
@@ -212,10 +214,10 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-      <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '92vh', overflowY: 'auto', padding: '0', background: '#111', borderRadius: '16px', display: 'flex', flexDirection: 'column' }}>
+      <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '800px', maxHeight: '92vh', overflowY: 'auto', padding: '0', background: 'var(--surface-modal)', borderRadius: '16px', display: 'flex', flexDirection: 'column' }}>
         
         {/* Header */}
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111', zIndex: 2 }}>
+        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--surface-modal)', zIndex: 2 }}>
           <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{isEditMode ? 'Edit Visitor' : 'Enter New Visitor'}</h3>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
         </div>
@@ -297,11 +299,6 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
                     <label className="input-label" style={{ fontSize: '0.75rem' }}>No. of Visitors</label>
                     <input type="number" name="numberOfVisitor" className="input-control" value={formData.numberOfVisitor} onChange={handleInputChange} min="1" placeholder="E.g. 2" style={{ marginBottom: 0 }} />
                   </div>
-                </div>
-
-                <div>
-                  <label className="input-label" style={{ fontSize: '0.75rem' }}>Email Address</label>
-                  <input type="email" name="email" className="input-control" value={formData.email} onChange={handleInputChange} placeholder="john@example.com" style={{ marginBottom: 0 }} />
                 </div>
 
                 <div>
@@ -399,7 +396,7 @@ const EnterVisitorModal = ({ onClose, onRefresh, initialData = null, getImageUrl
         </div>
 
         {/* Footer Actions */}
-        <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: '#111', position: 'sticky', bottom: 0, zIndex: 2, borderRadius: '0 0 16px 16px' }}>
+        <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: 'var(--surface-modal)', position: 'sticky', bottom: 0, zIndex: 2, borderRadius: '0 0 16px 16px' }}>
           <button onClick={onClose} className="btn btn-outline" disabled={loading}>
             Cancel
           </button>

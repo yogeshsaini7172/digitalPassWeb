@@ -30,7 +30,7 @@ socket.on('disconnect', (reason) => {
 });
 
 // Helper to fetch and upsert single pass
-const fetchAndUpsertPass = async (type, id) => {
+export const fetchAndUpsertPass = async (type, id) => {
   if (!currentToken) return;
   try {
     let payload = { token: currentToken };
@@ -66,49 +66,16 @@ const fetchAndUpsertPass = async (type, id) => {
 // Gate Pass Events
 socket.on('gatePassInsert', (data) => fetchAndUpsertPass('gatePass', data.gatePassId));
 socket.on('gatePassStatusUpdate', (data) => fetchAndUpsertPass('gatePass', data.gatePassId));
-socket.on('gatePassUpdate', async (data) => {
-  try {
-    const id = Number(data.gatePassId);
-    const existing = await db.gatePasses.get(id);
-    if (existing) {
-      if (data.remark) existing.remark = data.remark;
-      if (data.tgRemark) existing.tgRemark = data.tgRemark;
-      await db.gatePasses.put(existing);
-    }
-  } catch (error) { console.error(error); }
-});
+socket.on('gatePassUpdate', (data) => fetchAndUpsertPass('gatePass', data.gatePassId));
 
 // Inter-Institutional Events
 socket.on('interInstitutionalGatePassInsert', (data) => fetchAndUpsertPass('interInstitutionalGatePass', data.gatePassId));
 socket.on('interInstitutionalGatePassStatusUpdate', (data) => fetchAndUpsertPass('interInstitutionalGatePass', data.gatePassId));
-socket.on('interInstitutionalGatePassUpdate', async (data) => {
-  try {
-    const id = Number(data.gatePassId);
-    const existing = await db.interInstitutionalGatePasses.get(id);
-    if (existing) {
-      if (data.remark) existing.remark = data.remark;
-      if (data.tgRemark) existing.tgRemark = data.tgRemark;
-      await db.interInstitutionalGatePasses.put(existing);
-    }
-  } catch (error) { console.error(error); }
-});
+socket.on('interInstitutionalGatePassUpdate', (data) => fetchAndUpsertPass('interInstitutionalGatePass', data.gatePassId));
 
 // Visitor Events
 socket.on('visitorInsert', (data) => fetchAndUpsertPass('visitor', data.visitorId));
-socket.on('visitorUpdate', async (data) => {
-  if (data.operation === 'exit' || data.operation === 'meet') {
-    try {
-      const id = Number(data.visitorId);
-      const existing = await db.visitors.get(id);
-      if (existing) {
-        existing.status = data.operation;
-        await db.visitors.put(existing);
-      }
-    } catch (error) { console.error(error); }
-  } else {
-    fetchAndUpsertPass('visitor', data.visitorId);
-  }
-});
+socket.on('visitorUpdate', (data) => fetchAndUpsertPass('visitor', data.visitorId));
 
 export const connectSocket = (token) => {
   currentToken = token;
